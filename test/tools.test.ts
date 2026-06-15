@@ -22,3 +22,33 @@ test("jira_whoami hits /myself and returns user fields", async () => {
   assert.match(out, /Marek B/);
   assert.match(out, /m@b\.pl/);
 });
+
+import { getIssue } from "../src/tools/getIssue.ts";
+
+test("jira_get_issue fetches issue and flattens fields", async () => {
+  const cap: any = {};
+  const client = clientReturning(
+    {
+      key: "PROJ-17619",
+      fields: {
+        summary: "Fix checkout",
+        status: { name: "In Progress" },
+        assignee: { displayName: "Anna K" },
+        reporter: { displayName: "Marek B" },
+        issuetype: { name: "Bug" },
+        priority: { name: "High" },
+        created: "2026-06-01T10:00:00.000+0000",
+        updated: "2026-06-10T12:00:00.000+0000",
+        description: "details",
+      },
+    },
+    cap,
+  );
+  const out = await getIssue.handler(client, { issue_key: "PROJ-17619" });
+  assert.match(cap.url, /\/rest\/api\/2\/issue\/PROJ-17619\?/);
+  const parsed = JSON.parse(out);
+  assert.equal(parsed.key, "PROJ-17619");
+  assert.equal(parsed.status, "In Progress");
+  assert.equal(parsed.assignee, "Anna K");
+  assert.equal(parsed.type, "Bug");
+});
