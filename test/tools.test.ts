@@ -98,3 +98,18 @@ test("jira_get_comments fetches comments endpoint and maps fields", async () => 
   assert.equal(parsed[0].author, "Anna K");
   assert.equal(parsed[0].body, "Looks good");
 });
+
+import { getTransitions } from "../src/tools/getTransitions.ts";
+
+test("jira_get_transitions lists available transitions", async () => {
+  const cap: any = {};
+  const client = clientReturning(
+    { transitions: [{ id: "21", name: "Start Progress", to: { name: "In Progress" } }] },
+    cap,
+  );
+  const out = await getTransitions.handler(client, { issue_key: "PROJ-17619" });
+  assert.match(cap.url, /\/rest\/api\/2\/issue\/PROJ-17619\/transitions$/);
+  const parsed = JSON.parse(out);
+  assert.equal(parsed[0].id, "21");
+  assert.equal(parsed[0].to, "In Progress");
+});
