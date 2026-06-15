@@ -52,3 +52,33 @@ test("jira_get_issue fetches issue and flattens fields", async () => {
   assert.equal(parsed.assignee, "Anna K");
   assert.equal(parsed.type, "Bug");
 });
+
+import { search } from "../src/tools/search.ts";
+
+test("jira_search posts jql and maps issue list", async () => {
+  const cap: any = {};
+  const client = clientReturning(
+    {
+      issues: [
+        { key: "PROJ-1", fields: { summary: "A", status: { name: "Open" }, assignee: { displayName: "X" } } },
+        { key: "PROJ-2", fields: { summary: "B", status: { name: "Done" }, assignee: null } },
+      ],
+    },
+    cap,
+  );
+  const out = await search.handler(client, { jql: "project = PROJ", limit: 10 });
+  assert.match(cap.url, /\/rest\/api\/2\/search\?/);
+  assert.match(decodeURIComponent(cap.url), /jql=project = PROJ/);
+  assert.match(cap.url, /maxResults=10/);
+  const parsed = JSON.parse(out);
+  assert.equal(parsed.length, 2);
+  assert.equal(parsed[0].key, "PROJ-1");
+  assert.equal(parsed[1].assignee, null);
+});
+
+test("jira_search defaults limit to 25", async () => {
+  const cap: any = {};
+  const client = clientReturning({ issues: [] }, cap);
+  await search.handler(client, { jql: "x" });
+  assert.match(cap.url, /maxResults=25/);
+});

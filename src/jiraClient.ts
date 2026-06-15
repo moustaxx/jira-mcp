@@ -27,13 +27,15 @@ export class JiraClient {
   }
 
   async get(path: string, query?: Record<string, QueryValue>): Promise<any> {
-    const url = new URL(this.baseUrl + path);
+    let urlStr = this.baseUrl + path;
     if (query) {
+      const parts: string[] = [];
       for (const [k, v] of Object.entries(query)) {
-        if (v !== undefined) url.searchParams.set(k, String(v));
+        if (v !== undefined) parts.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
       }
+      if (parts.length) urlStr += "?" + parts.join("&");
     }
-    const res = await this.fetchImpl(url.toString(), {
+    const res = await this.fetchImpl(urlStr, {
       headers: { Authorization: `Bearer ${this.pat}`, Accept: "application/json" },
     });
     if (!res.ok) {
