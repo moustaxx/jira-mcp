@@ -82,3 +82,19 @@ test("jira_search defaults limit to 25", async () => {
   await search.handler(client, { jql: "x" });
   assert.match(cap.url, /maxResults=25/);
 });
+
+import { getComments } from "../src/tools/getComments.ts";
+
+test("jira_get_comments fetches comments endpoint and maps fields", async () => {
+  const cap: any = {};
+  const client = clientReturning(
+    { comments: [{ author: { displayName: "Anna K" }, created: "2026-06-02T09:00:00.000+0000", body: "Looks good" }] },
+    cap,
+  );
+  const out = await getComments.handler(client, { issue_key: "PROJ-17619" });
+  assert.match(cap.url, /\/rest\/api\/2\/issue\/PROJ-17619\/comment$/);
+  const parsed = JSON.parse(out);
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0].author, "Anna K");
+  assert.equal(parsed[0].body, "Looks good");
+});
