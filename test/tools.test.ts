@@ -113,3 +113,17 @@ test("jira_get_transitions lists available transitions", async () => {
   assert.equal(parsed[0].id, "21");
   assert.equal(parsed[0].to, "In Progress");
 });
+
+import { tools } from "../src/tools/index.ts";
+
+test("registry exposes all five tools with unique names", async () => {
+  const names = tools.map((t) => t.name).sort();
+  assert.deepEqual(names, [
+    "jira_get_comments",
+    "jira_get_issue",
+    "jira_get_transitions",
+    "jira_search",
+    "jira_whoami",
+  ]);
+  assert.equal(new Set(names).size, names.length);
+});
