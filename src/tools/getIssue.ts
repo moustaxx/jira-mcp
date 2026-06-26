@@ -1,6 +1,6 @@
 import type { Tool } from "./types.ts";
 
-const FIELDS = "summary,status,assignee,reporter,description,issuetype,priority,created,updated";
+const FIELDS = "summary,status,assignee,reporter,description,issuetype,priority,created,updated,attachment";
 
 export const getIssue: Tool = {
   name: "jira_get_issue",
@@ -26,6 +26,14 @@ export const getIssue: Tool = {
         created: f.created ?? null,
         updated: f.updated ?? null,
         description: f.description ?? null,
+        attachments: Array.isArray(f.attachment)
+          ? f.attachment.map((a: any) => ({
+              id: a.id,
+              filename: a.filename,
+              mimeType: a.mimeType ?? null,
+              size: a.size ?? null,
+            }))
+          : [],
       },
       null,
       2,

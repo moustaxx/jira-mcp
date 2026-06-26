@@ -44,6 +44,19 @@ export class JiraClient {
     }
     return res.json();
   }
+
+  async getBinary(pathOrUrl: string): Promise<{ data: Buffer; contentType: string | null }> {
+    const urlStr = /^https?:\/\//.test(pathOrUrl) ? pathOrUrl : this.baseUrl + pathOrUrl;
+    const res = await this.fetchImpl(urlStr, {
+      headers: { Authorization: `Bearer ${this.pat}` },
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new JiraError(res.status, mapError(res.status, body));
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    return { data: buf, contentType: res.headers.get("content-type") };
+  }
 }
 
 function mapError(status: number, body: string): string {

@@ -114,11 +114,56 @@ test("jira_get_transitions lists available transitions", async () => {
   assert.equal(parsed[0].to, "In Progress");
 });
 
+import { getAttachment } from "../src/tools/getAttachment.ts";
+import { mkdtemp, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+test("jira_get_attachment fetches metadata, downloads content, and saves to disk", async () => {
+  const urls: string[] = [];
+  const payload = Buffer.from("PNGDATA");
+  const client = new JiraClient({
+    baseUrl: "https://jira.example.test",
+    pat: "t",
+    fetchImpl: async (url: string) => {
+      urls.push(url);
+      if (url.endsWith("/rest/api/2/attachment/123")) {
+        const body = {
+          id: "123",
+          filename: "screenshot.png",
+          mimeType: "image/png",
+          content: "https://jira.example.test/secure/attachment/123/screenshot.png",
+        };
+        return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) } as any;
+      }
+      return {
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => payload.buffer.slice(payload.byteOffset, payload.byteOffset + payload.byteLength),
+        headers: { get: () => "image/png" },
+        text: async () => "",
+      } as any;
+    },
+  });
+
+  const dir = await mkdtemp(join(tmpdir(), "jira-mcp-test-"));
+  const out = await getAttachment.handler(client, { attachment_id: "123", dest_dir: dir });
+  assert.match(urls[0], /\/rest\/api\/2\/attachment\/123$/);
+  assert.match(urls[1], /\/secure\/attachment\/123\/screenshot\.png$/);
+  const parsed = JSON.parse(out);
+  assert.equal(parsed.filename, "screenshot.png");
+  assert.equal(parsed.mimeType, "image/png");
+  assert.equal(parsed.size, payload.length);
+  const saved = await readFile(parsed.path);
+  assert.equal(saved.toString(), "PNGDATA");
+});
+
 import { tools } from "../src/tools/index.ts";
 
-test("registry exposes all five tools with unique names", async () => {
+test("registry exposes all six tools with unique names", async () => {
   const names = tools.map((t) => t.name).sort();
   assert.deepEqual(names, [
+    "jira_get_attachment",
     "jira_get_comments",
     "jira_get_issue",
     "jira_get_transitions",

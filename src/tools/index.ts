@@ -4,5 +4,6 @@ import { getIssue } from "./getIssue.ts";
 import { search } from "./search.ts";
 import { getComments } from "./getComments.ts";
 import { getTransitions } from "./getTransitions.ts";
+import { getAttachment } from "./getAttachment.ts";
 
-export const tools: Tool[] = [whoami, getIssue, search, getComments, getTransitions];
+export const tools: Tool[] = [whoami, getIssue, search, getComments, getTransitions, getAttachment];
