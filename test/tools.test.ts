@@ -53,6 +53,62 @@ test("jira_get_issue fetches issue and flattens fields", async () => {
   assert.equal(parsed.type, "Bug");
 });
 
+test("jira_get_issue maps issue links, parent and subtasks", async () => {
+  const cap: any = {};
+  const client = clientReturning(
+    {
+      key: "PROJ-17619",
+      fields: {
+        summary: "Fix checkout",
+        parent: { key: "PROJ-17000", fields: { summary: "Checkout epic", status: { name: "Open" }, issuetype: { name: "Epic" } } },
+        subtasks: [
+          { key: "PROJ-17620", fields: { summary: "Sub A", status: { name: "Done" }, issuetype: { name: "Sub-task" } } },
+        ],
+        issuelinks: [
+          {
+            type: { name: "Blocks", inward: "is blocked by", outward: "blocks" },
+            outwardIssue: { key: "PROJ-17700", fields: { summary: "Deploy", status: { name: "Open" }, issuetype: { name: "Task" } } },
+          },
+          {
+            type: { name: "Relates", inward: "relates to", outward: "relates to" },
+            inwardIssue: { key: "PROJ-17500", fields: { summary: "Old bug", status: { name: "Closed" }, issuetype: { name: "Bug" } } },
+          },
+        ],
+      },
+    },
+    cap,
+  );
+  const out = await getIssue.handler(client, { issue_key: "PROJ-17619" });
+  assert.match(decodeURIComponent(cap.url), /issuelinks/);
+  assert.match(decodeURIComponent(cap.url), /subtasks/);
+  const parsed = JSON.parse(out);
+  assert.equal(parsed.parent.key, "PROJ-17000");
+  assert.equal(parsed.parent.type, "Epic");
+  assert.equal(parsed.subtasks.length, 1);
+  assert.equal(parsed.subtasks[0].key, "PROJ-17620");
+  assert.equal(parsed.subtasks[0].status, "Done");
+  assert.deepEqual(parsed.links[0], {
+    linkType: "Blocks",
+    direction: "outward",
+    relation: "blocks",
+    key: "PROJ-17700",
+    summary: "Deploy",
+    status: "Open",
+    type: "Task",
+  });
+  assert.equal(parsed.links[1].direction, "inward");
+  assert.equal(parsed.links[1].relation, "relates to");
+  assert.equal(parsed.links[1].key, "PROJ-17500");
+});
+
+test("jira_get_issue returns empty links/subtasks and null parent when absent", async () => {
+  const client = clientReturning({ key: "PROJ-1", fields: { summary: "A" } });
+  const parsed = JSON.parse(await getIssue.handler(client, { issue_key: "PROJ-1" }));
+  assert.deepEqual(parsed.links, []);
+  assert.deepEqual(parsed.subtasks, []);
+  assert.equal(parsed.parent, null);
+});
+
 import { search } from "../src/tools/search.ts";
 
 test("jira_search posts jql and maps issue list", async () => {
