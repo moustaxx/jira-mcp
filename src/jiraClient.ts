@@ -45,6 +45,24 @@ export class JiraClient {
     return res.json();
   }
 
+  async put(path: string, body: unknown): Promise<any> {
+    const res = await this.fetchImpl(this.baseUrl + path, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${this.pat}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new JiraError(res.status, mapError(res.status, text));
+    }
+    // Jira answers a successful issue update with 204 No Content.
+    return res.status === 204 ? null : res.json();
+  }
+
   async getBinary(pathOrUrl: string): Promise<{ data: Buffer; contentType: string | null }> {
     const urlStr = /^https?:\/\//.test(pathOrUrl) ? pathOrUrl : this.baseUrl + pathOrUrl;
     const res = await this.fetchImpl(urlStr, {

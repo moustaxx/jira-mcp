@@ -1,6 +1,6 @@
 # jira-mcp
 
-Read-only MCP server for self-hosted Jira (Server/Data Center).
+MCP server for self-hosted Jira (Server/Data Center). Read-only apart from one writable field: Deploy Description.
 
 ## Build
 
@@ -23,3 +23,23 @@ The instance URL is read from `JIRA_BASE_URL` and is never baked into the code.
 - `jira_search` — JQL search
 - `jira_get_comments` — comments on an issue
 - `jira_get_transitions` — available transitions (read-only listing)
+- `jira_get_attachment` — download an attachment to disk
+- `jira_set_deploy_description` — **write**: set or append the Deploy Description field
+
+## Writing the Deploy Description
+
+`jira_set_deploy_description` is the only tool that writes. It can touch a single field and
+nothing else — no other fields, no comments, no transitions.
+
+    jira_set_deploy_description(issue_key: "PROJ-18710", text: "...", mode: "replace" | "append")
+
+`mode` defaults to `replace`; `append` reads the current value first and adds the text after a
+blank line. The field id defaults to `customfield_11513` (Deploy Description) and
+can be overridden per instance:
+
+    -e JIRA_DEPLOY_DESCRIPTION_FIELD=customfield_XXXXX
+
+To find the id on another instance, check which fields your token may edit:
+
+    curl -H "Authorization: Bearer $JIRA_PAT" \
+      "$JIRA_BASE_URL/rest/api/2/issue/<KEY>/editmeta"

@@ -214,9 +214,75 @@ test("jira_get_attachment fetches metadata, downloads content, and saves to disk
   assert.equal(saved.toString(), "PNGDATA");
 });
 
+import { setDeployDescription } from "../src/tools/setDeployDescription.ts";
+
+function writeClient(captured: { calls: any[] }, getBody: any = {}) {
+  return new JiraClient({
+    baseUrl: "https://jira.example.test",
+    pat: "t",
+    fetchImpl: async (url: string, init: any) => {
+      captured.calls.push({ url, method: init?.method ?? "GET", body: init?.body });
+      if ((init?.method ?? "GET") === "GET") {
+        return { ok: true, status: 200, json: async () => getBody, text: async () => JSON.stringify(getBody) } as any;
+      }
+      return { ok: true, status: 204, json: async () => null, text: async () => "" } as any;
+    },
+  });
+}
+
+test("jira_set_deploy_description replaces the field with a single PUT", async () => {
+  const cap = { calls: [] as any[] };
+  const client = writeClient(cap);
+  const out = await setDeployDescription.handler(client, { issue_key: "PROJ-18710", text: "MR !30 -> master" });
+  assert.equal(cap.calls.length, 1);
+  assert.equal(cap.calls[0].method, "PUT");
+  assert.match(cap.calls[0].url, /\/rest\/api\/2\/issue\/PROJ-18710$/);
+  assert.deepEqual(JSON.parse(cap.calls[0].body), { fields: { customfield_11513: "MR !30 -> master" } });
+  const parsed = JSON.parse(out);
+  assert.equal(parsed.key, "PROJ-18710");
+  assert.equal(parsed.mode, "replace");
+  assert.equal(parsed.field, "customfield_11513");
+});
+
+test("jira_set_deploy_description appends after the existing value", async () => {
+  const cap = { calls: [] as any[] };
+  const client = writeClient(cap, { fields: { customfield_11513: "old line" } });
+  await setDeployDescription.handler(client, { issue_key: "PROJ-1", text: "new line", mode: "append" });
+  assert.equal(cap.calls.length, 2);
+  assert.equal(cap.calls[0].method, "GET");
+  assert.match(cap.calls[0].url, /\/rest\/api\/2\/issue\/PROJ-1\?fields=customfield_11513$/);
+  assert.deepEqual(JSON.parse(cap.calls[1].body), { fields: { customfield_11513: "old line\n\nnew line" } });
+});
+
+test("jira_set_deploy_description appending to an empty field adds no leading blank lines", async () => {
+  const cap = { calls: [] as any[] };
+  const client = writeClient(cap, { fields: { customfield_11513: null } });
+  await setDeployDescription.handler(client, { issue_key: "PROJ-1", text: "first line", mode: "append" });
+  assert.deepEqual(JSON.parse(cap.calls[1].body), { fields: { customfield_11513: "first line" } });
+});
+
+test("jira_set_deploy_description rejects an unknown mode without calling Jira", async () => {
+  const cap = { calls: [] as any[] };
+  const client = writeClient(cap);
+  await assert.rejects(() => setDeployDescription.handler(client, { issue_key: "PROJ-1", text: "x", mode: "delete" }), /mode/);
+  assert.equal(cap.calls.length, 0);
+});
+
+test("jira_set_deploy_description honours JIRA_DEPLOY_DESCRIPTION_FIELD override", async () => {
+  const cap = { calls: [] as any[] };
+  const client = writeClient(cap);
+  process.env.JIRA_DEPLOY_DESCRIPTION_FIELD = "customfield_11505";
+  try {
+    await setDeployDescription.handler(client, { issue_key: "PROJ-1", text: "x" });
+  } finally {
+    delete process.env.JIRA_DEPLOY_DESCRIPTION_FIELD;
+  }
+  assert.deepEqual(JSON.parse(cap.calls[0].body), { fields: { customfield_11505: "x" } });
+});
+
 import { tools } from "../src/tools/index.ts";
 
-test("registry exposes all six tools with unique names", async () => {
+test("registry exposes all seven tools with unique names", async () => {
   const names = tools.map((t) => t.name).sort();
   assert.deepEqual(names, [
     "jira_get_attachment",
@@ -224,6 +290,7 @@ test("registry exposes all six tools with unique names", async () => {
     "jira_get_issue",
     "jira_get_transitions",
     "jira_search",
+    "jira_set_deploy_description",
     "jira_whoami",
   ]);
   assert.equal(new Set(names).size, names.length);
