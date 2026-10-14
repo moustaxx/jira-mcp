@@ -548,7 +548,115 @@ test("jira_get_worklogs maps entries and sums time", async () => {
   assert.equal(parsed.worklogs[1].comment, null);
 });
 
-import { tools } from "../src/tools/index.ts";
+import { addComment } from "../src/tools/addComment.ts";
+import { createIssue, updateIssue } from "../src/tools/writeIssue.ts";
+
+function postClient(captured: { calls: any[] }, responseBody: any = {}) {
+  return new JiraClient({
+    baseUrl: "https://jira.example.test",
+    pat: "t",
+    fetchImpl: async (url: string, init: any) => {
+      captured.calls.push({ url, method: init?.method ?? "GET", body: init?.body });
+      const status = init?.method === "PUT" ? 204 : 201;
+      return { ok: true, status, json: async () => responseBody, text: async () => JSON.stringify(responseBody) } as any;
+    },
+  });
+}
+
+test("jira_add_comment posts the body to the comment endpoint", async () => {
+  const cap = { calls: [] as any[] };
+  const client = postClient(cap, { id: "555", author: { displayName: "Marek B" }, created: "2026-10-14T10:00:00.000+0000" });
+  const parsed = JSON.parse(await addComment.handler(client, { issue_key: "PROJ-1", body: "Deployed to test" }));
+  assert.equal(cap.calls[0].method, "POST");
+  assert.match(cap.calls[0].url, /\/rest\/api\/2\/issue\/PROJ-1\/comment$/);
+  assert.deepEqual(JSON.parse(cap.calls[0].body), { body: "Deployed to test" });
+  assert.equal(parsed.id, "555");
+});
+
+test("jira_add_comment rejects an empty body without calling Jira", async () => {
+  const cap = { calls: [] as any[] };
+  await assert.rejects(() => addComment.handler(postClient(cap), { issue_key: "PROJ-1", body: "  " }), /empty/);
+  assert.equal(cap.calls.length, 0);
+});
+
+test("jira_create_issue builds fields and lets explicit args win over fields", async () => {
+  const cap = { calls: [] as any[] };
+  const client = postClient(cap, { id: "10001", key: "PROJ-2" });
+  const parsed = JSON.parse(
+    await createIssue.handler(client, {
+      project: "PROJ",
+      issue_type: "Sub-task",
+      summary: "Do it",
+      description: "details",
+      fields: { parent: { key: "PROJ-1" }, labels: ["backend"], summary: "ignored" },
+    }),
+  );
+  assert.equal(cap.calls[0].method, "POST");
+  assert.match(cap.calls[0].url, /\/rest\/api\/2\/issue$/);
+  assert.deepEqual(JSON.parse(cap.calls[0].body), {
+    fields: {
+      parent: { key: "PROJ-1" },
+      labels: ["backend"],
+      summary: "Do it",
+      project: { key: "PROJ" },
+      issuetype: { name: "Sub-task" },
+      description: "details",
+    },
+  });
+  assert.deepEqual(parsed, { key: "PROJ-2", id: "10001" });
+});
+
+test("jira_create_issue rejects non-object fields", async () => {
+  const cap = { calls: [] as any[] };
+  await assert.rejects(
+    () => createIssue.handler(postClient(cap), { project: "PROJ", issue_type: "Task", summary: "A", fields: ["x"] }),
+    /must be an object/,
+  );
+  assert.equal(cap.calls.length, 0);
+});
+
+test("jira_update_issue PUTs only the given fields", async () => {
+  const cap = { calls: [] as any[] };
+  const parsed = JSON.parse(
+    await updateIssue.handler(postClient(cap), { issue_key: "PROJ-1", summary: "New", fields: { labels: ["x"] } }),
+  );
+  assert.equal(cap.calls[0].method, "PUT");
+  assert.match(cap.calls[0].url, /\/rest\/api\/2\/issue\/PROJ-1$/);
+  assert.deepEqual(JSON.parse(cap.calls[0].body), { fields: { labels: ["x"], summary: "New" } });
+  assert.deepEqual(parsed.updated, ["labels", "summary"]);
+});
+
+test("jira_update_issue with nothing to change does not call Jira", async () => {
+  const cap = { calls: [] as any[] };
+  await assert.rejects(() => updateIssue.handler(postClient(cap), { issue_key: "PROJ-1" }), /Nothing to update/);
+  assert.equal(cap.calls.length, 0);
+});
+
+import { tools, enabledTools } from "../src/tools/index.ts";
+
+test("write tools are disabled by default", () => {
+  const names = enabledTools(undefined).map((t) => t.name);
+  assert.deepEqual(names, tools.map((t) => t.name));
+  assert.equal(names.includes("jira_add_comment"), false);
+  assert.equal(names.includes("jira_create_issue"), false);
+});
+
+test("JIRA_WRITE_TOOLS enables groups independently, tolerating spaces, case and duplicates", () => {
+  const comments = enabledTools("comments").map((t) => t.name);
+  assert.ok(comments.includes("jira_add_comment"));
+  assert.equal(comments.includes("jira_update_issue"), false);
+
+  const both = enabledTools(" Issues , comments,issues ").map((t) => t.name);
+  assert.equal(both.length, tools.length + 3);
+  assert.ok(both.includes("jira_create_issue"));
+  assert.ok(both.includes("jira_update_issue"));
+  assert.equal(new Set(both).size, both.length);
+});
+
+test("JIRA_WRITE_TOOLS rejects unknown groups", () => {
+  assert.throws(() => enabledTools("comments,transitions"), /Unknown JIRA_WRITE_TOOLS group\(s\): transitions/);
+  assert.throws(() => enabledTools("constructor"), /Unknown/);
+});
 
 test("registry exposes all thirteen tools with unique names", async () => {
   const names = tools.map((t) => t.name).sort();

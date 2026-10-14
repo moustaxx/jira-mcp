@@ -1,6 +1,6 @@
 # jira-mcp
 
-MCP server for self-hosted Jira (Server/Data Center). Read-only apart from one writable field: Deploy Description.
+MCP server for self-hosted Jira (Server/Data Center). Read-only by default apart from one writable field: Deploy Description. Comments and issue create/edit can be enabled explicitly (see [Optional write tools](#optional-write-tools)).
 
 ## Build
 
@@ -30,11 +30,25 @@ The instance URL is read from `JIRA_BASE_URL` and is never baked into the code.
 - `jira_get_transitions` — available transitions (read-only listing)
 - `jira_get_attachment` — download an attachment to disk
 - `jira_set_deploy_description` — **write**: set or append the Deploy Description field
+- `jira_add_comment` — **write, opt-in** (`comments`): add a comment
+- `jira_create_issue` / `jira_update_issue` — **write, opt-in** (`issues`): create an issue, edit fields of an issue
+
+## Optional write tools
+
+Disabled by default: unless enabled, these tools are not even listed to the client. Enable them per
+group with a comma-separated `JIRA_WRITE_TOOLS`:
+
+    -e JIRA_WRITE_TOOLS=comments          # jira_add_comment
+    -e JIRA_WRITE_TOOLS=issues            # jira_create_issue, jira_update_issue
+    -e JIRA_WRITE_TOOLS=comments,issues
+
+An unknown group name stops the server at startup, so a typo never silently leaves a tool off.
+`jira_update_issue` edits fields only (summary, description, any field by id); it never changes status.
 
 ## Writing the Deploy Description
 
-`jira_set_deploy_description` is the only tool that writes. It can touch a single field and
-nothing else — no other fields, no comments, no transitions.
+`jira_set_deploy_description` is the only write tool that is always on. It can touch a single field
+and nothing else — no other fields, no comments, no transitions.
 
     jira_set_deploy_description(issue_key: "PROJ-18710", text: "...", mode: "replace" | "append")
 

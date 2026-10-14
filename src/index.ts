@@ -3,13 +3,21 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { JiraClient } from "./jiraClient.ts";
-import { tools } from "./tools/index.ts";
+import { enabledTools } from "./tools/index.ts";
 
 const baseUrl = process.env.JIRA_BASE_URL;
 const pat = process.env.JIRA_PAT;
 
 if (!baseUrl || !pat) {
   console.error("jira-mcp: JIRA_BASE_URL and JIRA_PAT environment variables are required.");
+  process.exit(1);
+}
+
+let tools;
+try {
+  tools = enabledTools(process.env.JIRA_WRITE_TOOLS);
+} catch (e) {
+  console.error(`jira-mcp: ${e instanceof Error ? e.message : String(e)}`);
   process.exit(1);
 }
 

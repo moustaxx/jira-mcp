@@ -94,3 +94,17 @@ test("put maps 400 to JiraError with body snippet", async () => {
     (e: any) => e instanceof JiraError && e.status === 400 && /cannot be set/.test(e.message),
   );
 });
+
+test("post sends POST with JSON body and returns parsed response", async () => {
+  const cap: any = {};
+  const client = new JiraClient({
+    baseUrl: "https://jira.example.test",
+    pat: "secret",
+    fetchImpl: fakeWriteFetch(cap, { ok: true, status: 201, body: { id: "10001", key: "PROJ-2" } }),
+  });
+  const out = await client.post("/rest/api/2/issue", { fields: { summary: "A" } });
+  assert.equal(cap.method, "POST");
+  assert.equal(cap.headers["Content-Type"], "application/json");
+  assert.deepEqual(JSON.parse(cap.body), { fields: { summary: "A" } });
+  assert.deepEqual(out, { id: "10001", key: "PROJ-2" });
+});

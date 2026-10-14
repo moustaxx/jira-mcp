@@ -49,8 +49,16 @@ export class JiraClient {
   }
 
   async put(path: string, body: unknown): Promise<any> {
+    return this.send("PUT", path, body);
+  }
+
+  async post(path: string, body: unknown): Promise<any> {
+    return this.send("POST", path, body);
+  }
+
+  private async send(method: "PUT" | "POST", path: string, body: unknown): Promise<any> {
     const res = await this.fetchImpl(this.baseUrl + path, {
-      method: "PUT",
+      method,
       headers: {
         Authorization: `Bearer ${this.pat}`,
         Accept: "application/json",
