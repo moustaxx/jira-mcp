@@ -148,7 +148,7 @@ test("jira_search posts jql and maps issue list", async () => {
   assert.match(cap.url, /\/rest\/api\/2\/search\?/);
   assert.match(decodeURIComponent(cap.url), /jql=project = PROJ/);
   assert.match(cap.url, /maxResults=10/);
-  const parsed = JSON.parse(out);
+  const parsed = JSON.parse(out).issues;
   assert.equal(parsed.length, 2);
   assert.equal(parsed[0].key, "PROJ-1");
   assert.equal(parsed[1].assignee, null);
@@ -160,7 +160,7 @@ test("jira_search requests extra fields and returns them per issue", async () =>
     { issues: [{ key: "PROJ-1", fields: { summary: "A", customfield_11513: "MR !30" } }, { key: "PROJ-2", fields: { summary: "B" } }] },
     cap,
   );
-  const parsed = JSON.parse(await search.handler(client, { jql: "x", fields: ["customfield_11513"] }));
+  const parsed = JSON.parse(await search.handler(client, { jql: "x", fields: ["customfield_11513"] })).issues;
   assert.match(decodeURIComponent(cap.url), /fields=summary,status,assignee,customfield_11513(&|$)/);
   assert.deepEqual(parsed[0].extraFields, { customfield_11513: "MR !30" });
   assert.deepEqual(parsed[1].extraFields, { customfield_11513: null });
@@ -168,7 +168,7 @@ test("jira_search requests extra fields and returns them per issue", async () =>
 
 test("jira_search omits extraFields when no fields are requested", async () => {
   const client = clientReturning({ issues: [{ key: "PROJ-1", fields: { summary: "A" } }] });
-  const parsed = JSON.parse(await search.handler(client, { jql: "x" }));
+  const parsed = JSON.parse(await search.handler(client, { jql: "x" })).issues;
   assert.equal("extraFields" in parsed[0], false);
 });
 
@@ -177,6 +177,17 @@ test("jira_search defaults limit to 25", async () => {
   const client = clientReturning({ issues: [] }, cap);
   await search.handler(client, { jql: "x" });
   assert.match(cap.url, /maxResults=25/);
+  assert.doesNotMatch(cap.url, /startAt=/);
+});
+
+test("jira_search pages with start_at and returns total", async () => {
+  const cap: any = {};
+  const client = clientReturning({ total: 120, startAt: 50, issues: [{ key: "PROJ-51", fields: { summary: "A" } }] }, cap);
+  const parsed = JSON.parse(await search.handler(client, { jql: "x", start_at: 50 }));
+  assert.match(cap.url, /startAt=50/);
+  assert.equal(parsed.total, 120);
+  assert.equal(parsed.startAt, 50);
+  assert.equal(parsed.issues[0].key, "PROJ-51");
 });
 
 import { getComments } from "../src/tools/getComments.ts";
@@ -483,9 +494,63 @@ test("jira_get_dev_info reports failing sources under errors instead of throwing
   assert.match(parsed.errors[1], /^dev-status: Not found/);
 });
 
+import { listBoards, listSprints } from "../src/tools/agile.ts";
+
+test("jira_list_boards filters by project and maps boards", async () => {
+  const cap: any = {};
+  const client = clientReturning(
+    { isLast: true, values: [{ id: 7, name: "PROJ board", type: "scrum", location: { projectKey: "PROJ" } }] },
+    cap,
+  );
+  const parsed = JSON.parse(await listBoards.handler(client, { project: "PROJ" }));
+  assert.match(cap.url, /\/rest\/agile\/1\.0\/board\?projectKeyOrId=PROJ&startAt=0&maxResults=50$/);
+  assert.deepEqual(parsed, [{ id: 7, name: "PROJ board", type: "scrum", project: "PROJ" }]);
+});
+
+test("jira_list_sprints defaults to active,future and follows pages until isLast", async () => {
+  const urls: string[] = [];
+  const client = new JiraClient({
+    baseUrl: "https://jira.example.test",
+    pat: "t",
+    fetchImpl: async (url: string) => {
+      urls.push(url);
+      const body = /startAt=0&/.test(url)
+        ? { isLast: false, values: [{ id: 1, name: "S1", state: "active", goal: "" }] }
+        : { isLast: true, values: [{ id: 2, name: "S2", state: "future" }] };
+      return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) } as any;
+    },
+  });
+  const parsed = JSON.parse(await listSprints.handler(client, { board_id: 7 }));
+  assert.equal(urls.length, 2);
+  assert.match(decodeURIComponent(urls[0]), /\/board\/7\/sprint\?state=active,future&startAt=0&/);
+  assert.match(urls[1], /startAt=1&/);
+  assert.deepEqual(parsed.map((s: any) => s.id), [1, 2]);
+  assert.equal(parsed[0].goal, null);
+});
+
+import { getWorklogs } from "../src/tools/getWorklogs.ts";
+
+test("jira_get_worklogs maps entries and sums time", async () => {
+  const cap: any = {};
+  const client = clientReturning(
+    {
+      worklogs: [
+        { author: { displayName: "Anna K" }, started: "2026-06-01T09:00:00.000+0000", timeSpent: "1h", timeSpentSeconds: 3600, comment: "review" },
+        { author: { displayName: "Marek B" }, started: "2026-06-02T09:00:00.000+0000", timeSpent: "30m", timeSpentSeconds: 1800 },
+      ],
+    },
+    cap,
+  );
+  const parsed = JSON.parse(await getWorklogs.handler(client, { issue_key: "PROJ-1" }));
+  assert.match(cap.url, /\/rest\/api\/2\/issue\/PROJ-1\/worklog$/);
+  assert.equal(parsed.totalSeconds, 5400);
+  assert.equal(parsed.worklogs[0].comment, "review");
+  assert.equal(parsed.worklogs[1].comment, null);
+});
+
 import { tools } from "../src/tools/index.ts";
 
-test("registry exposes all ten tools with unique names", async () => {
+test("registry exposes all thirteen tools with unique names", async () => {
   const names = tools.map((t) => t.name).sort();
   assert.deepEqual(names, [
     "jira_get_attachment",
@@ -494,7 +559,10 @@ test("registry exposes all ten tools with unique names", async () => {
     "jira_get_dev_info",
     "jira_get_issue",
     "jira_get_transitions",
+    "jira_get_worklogs",
+    "jira_list_boards",
     "jira_list_fields",
+    "jira_list_sprints",
     "jira_search",
     "jira_set_deploy_description",
     "jira_whoami",

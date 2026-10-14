@@ -21,10 +21,12 @@ The instance URL is read from `JIRA_BASE_URL` and is never baked into the code.
 - `jira_whoami` — current user / auth check
 - `jira_get_issue` — issue by key (optional `fields`: extra field ids, returned under `extraFields`)
 - `jira_list_fields` — field ids and names (optionally filtered, or only those set on an issue)
-- `jira_search` — JQL search (optional `fields`, same as `jira_get_issue`)
+- `jira_search` — JQL search (optional `fields`, same as `jira_get_issue`; paged with `start_at`, returns `total`)
 - `jira_get_comments` — comments on an issue
 - `jira_get_changelog` — change history of an issue (optionally for one field)
 - `jira_get_dev_info` — merge requests and branches from the Development panel, plus remote links
+- `jira_get_worklogs` — work logged on an issue
+- `jira_list_boards` / `jira_list_sprints` — Jira Software boards and their sprints (sprint issues: `jira_search` with `sprint = <id>`)
 - `jira_get_transitions` — available transitions (read-only listing)
 - `jira_get_attachment` — download an attachment to disk
 - `jira_set_deploy_description` — **write**: set or append the Deploy Description field

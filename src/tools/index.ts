@@ -9,5 +9,7 @@ import { setDeployDescription } from "./setDeployDescription.ts";
 import { listFields } from "./listFields.ts";
 import { getChangelog } from "./getChangelog.ts";
 import { getDevInfo } from "./getDevInfo.ts";
+import { listBoards, listSprints } from "./agile.ts";
+import { getWorklogs } from "./getWorklogs.ts";
 
-export const tools: Tool[] = [whoami, getIssue, search, getComments, getTransitions, getAttachment, setDeployDescription, listFields, getChangelog, getDevInfo];
+export const tools: Tool[] = [whoami, getIssue, search, getComments, getTransitions, getAttachment, setDeployDescription, listFields, getChangelog, getDevInfo, listBoards, listSprints, getWorklogs];
