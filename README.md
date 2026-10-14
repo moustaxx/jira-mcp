@@ -19,7 +19,8 @@ The instance URL is read from `JIRA_BASE_URL` and is never baked into the code.
 ## Tools
 
 - `jira_whoami` — current user / auth check
-- `jira_get_issue` — issue by key
+- `jira_get_issue` — issue by key (optional `fields`: extra field ids, returned under `extraFields`)
+- `jira_list_fields` — field ids and names (optionally filtered, or only those set on an issue)
 - `jira_search` — JQL search
 - `jira_get_comments` — comments on an issue
 - `jira_get_transitions` — available transitions (read-only listing)

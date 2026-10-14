@@ -302,15 +302,54 @@ test("jira_set_deploy_description honours JIRA_DEPLOY_DESCRIPTION_FIELD override
   assert.deepEqual(JSON.parse(cap.calls[0].body), { fields: { customfield_11505: "x" } });
 });
 
+import { listFields } from "../src/tools/listFields.ts";
+
+test("jira_list_fields lists all fields filtered by name or id", async () => {
+  const cap: any = {};
+  const client = clientReturning(
+    [
+      { id: "summary", name: "Summary", custom: false, schema: { type: "string" } },
+      { id: "customfield_11513", name: "Deploy Description", custom: true, schema: { type: "string" } },
+      { id: "customfield_10001", name: "Team", custom: true, schema: { type: "option" } },
+    ],
+    cap,
+  );
+  const parsed = JSON.parse(await listFields.handler(client, { query: "DEPLOY" }));
+  assert.match(cap.url, /\/rest\/api\/2\/field$/);
+  assert.deepEqual(parsed, [{ id: "customfield_11513", name: "Deploy Description", custom: true, type: "string" }]);
+
+  const all = JSON.parse(await listFields.handler(client, {}));
+  assert.deepEqual(all.map((f: any) => f.id), ["customfield_10001", "customfield_11513", "summary"]);
+});
+
+test("jira_list_fields with issue_key lists only fields set on the issue", async () => {
+  const cap: any = {};
+  const client = clientReturning(
+    {
+      key: "PROJ-1",
+      names: { summary: "Summary", customfield_11513: "Deploy Description", customfield_10001: "Team", labels: "Labels" },
+      fields: { summary: "A", customfield_11513: "MR !30", customfield_10001: null, labels: [] },
+    },
+    cap,
+  );
+  const parsed = JSON.parse(await listFields.handler(client, { issue_key: "PROJ-1" }));
+  assert.match(decodeURIComponent(cap.url), /\/rest\/api\/2\/issue\/PROJ-1\?fields=\*all&expand=names$/);
+  assert.deepEqual(parsed, [
+    { id: "customfield_11513", name: "Deploy Description", custom: true },
+    { id: "summary", name: "Summary", custom: false },
+  ]);
+});
+
 import { tools } from "../src/tools/index.ts";
 
-test("registry exposes all seven tools with unique names", async () => {
+test("registry exposes all eight tools with unique names", async () => {
   const names = tools.map((t) => t.name).sort();
   assert.deepEqual(names, [
     "jira_get_attachment",
     "jira_get_comments",
     "jira_get_issue",
     "jira_get_transitions",
+    "jira_list_fields",
     "jira_search",
     "jira_set_deploy_description",
     "jira_whoami",
