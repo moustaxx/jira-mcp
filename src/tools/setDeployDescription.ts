@@ -30,13 +30,16 @@ export const setDeployDescription: Tool = {
     if (mode !== "replace" && mode !== "append") {
       throw new Error(`Unsupported mode "${args.mode}": use "replace" or "append".`);
     }
-    const field = process.env.JIRA_DEPLOY_DESCRIPTION_FIELD ?? DEFAULT_FIELD;
+    const field = process.env.JIRA_DEPLOY_DESCRIPTION_FIELD || DEFAULT_FIELD;
     const key = encodeURIComponent(args.issue_key);
 
     let value = args.text;
     if (mode === "append") {
       const data = await client.get(`/rest/api/2/issue/${key}`, { fields: field });
       const current = data.fields?.[field] ?? "";
+      if (typeof current !== "string") {
+        throw new Error(`Field ${field} is not a text field; cannot append.`);
+      }
       if (current.trim()) value = `${current}\n\n${args.text}`;
     }
 

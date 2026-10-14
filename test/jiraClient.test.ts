@@ -156,3 +156,60 @@ test("post sends POST with JSON body and returns parsed response", async () => {
   assert.deepEqual(JSON.parse(cap.body), { fields: { summary: "A" } });
   assert.deepEqual(out, { id: "10001", key: "PROJ-2" });
 });
+
+test("reports a non-JSON 200 response (e.g. SSO login page) clearly", async () => {
+  const client = new JiraClient({
+    baseUrl: "https://jira.example.test",
+    pat: "t",
+    fetchImpl: async () =>
+      ({
+        ok: true,
+        status: 200,
+        json: async () => JSON.parse("<html>"),
+        text: async () => "<html>",
+      }) as any,
+  });
+  await assert.rejects(() => client.get("/rest/api/2/myself"), /non-JSON response/);
+});
+
+test("aborts requests that exceed the timeout", async () => {
+  const client = new JiraClient({
+    baseUrl: "https://jira.example.test",
+    pat: "t",
+    timeoutMs: 10,
+    fetchImpl: (_url, init) =>
+      new Promise((_resolve, reject) => {
+        // A real fetch keeps the event loop alive; AbortSignal.timeout's timer alone does not.
+        const keepAlive = setTimeout(() => {}, 1000);
+        init?.signal?.addEventListener("abort", () => {
+          clearTimeout(keepAlive);
+          reject(init.signal!.reason);
+        });
+      }),
+  });
+  await assert.rejects(() => client.get("/rest/api/2/myself"), /timed out after 10 ms/);
+});
+
+test("getBinary sends the token only to the Jira origin", async () => {
+  const urls: string[] = [];
+  const client = new JiraClient({
+    baseUrl: "https://jira.example.test",
+    pat: "t",
+    fetchImpl: async (url: string) => {
+      urls.push(url);
+      return {
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => new ArrayBuffer(0),
+        headers: { get: () => null },
+      } as any;
+    },
+  });
+  await client.getBinary("https://jira.example.test/secure/attachment/1/a");
+  await assert.rejects(
+    () => client.getBinary("https://jira.example.test.attacker.example/a"),
+    /Refusing to send credentials/,
+  );
+  await assert.rejects(() => client.getBinary("http://jira.example.test/a"), /Refusing/);
+  assert.deepEqual(urls, ["https://jira.example.test/secure/attachment/1/a"]);
+});

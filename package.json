@@ -22,5 +22,8 @@
     "oxfmt": "^0.73.0",
     "oxlint": "^1.88.0",
     "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=22.6"
   }
 }

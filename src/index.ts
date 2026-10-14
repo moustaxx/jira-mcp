@@ -1,9 +1,11 @@
 #!/usr/bin/env node
+import { readFileSync } from "node:fs";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { JiraClient } from "./jiraClient.ts";
 import { enabledTools } from "./tools/index.ts";
+import { validateArgs } from "./tools/validate.ts";
 
 const baseUrl = process.env.JIRA_BASE_URL;
 const pat = process.env.JIRA_PAT;
@@ -21,9 +23,18 @@ try {
   process.exit(1);
 }
 
-const client = new JiraClient({ baseUrl, pat });
+let client: JiraClient;
+try {
+  client = new JiraClient({ baseUrl, pat });
+} catch {
+  console.error(`jira-mcp: JIRA_BASE_URL is not a valid URL: ${baseUrl}`);
+  process.exit(1);
+}
 
-const server = new Server({ name: "jira-mcp", version: "0.1.0" }, { capabilities: { tools: {} } });
+// Resolves to the package root from both src/ and dist/.
+const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+
+const server = new Server({ name: "jira-mcp", version }, { capabilities: { tools: {} } });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: tools.map((t) => ({
@@ -39,7 +50,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     return { content: [{ type: "text", text: `Unknown tool: ${req.params.name}` }], isError: true };
   }
   try {
-    const text = await tool.handler(client, (req.params.arguments ?? {}) as Record<string, any>);
+    const args = (req.params.arguments ?? {}) as Record<string, any>;
+    validateArgs(tool.inputSchema, args);
+    const text = await tool.handler(client, args);
     return { content: [{ type: "text", text }] };
   } catch (e) {
     return {

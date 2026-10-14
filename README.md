@@ -28,7 +28,7 @@ The instance URL is read from `JIRA_BASE_URL` and is never baked into the code.
 - `jira_get_worklogs` — work logged on an issue
 - `jira_list_boards` / `jira_list_sprints` — Jira Software boards and their sprints (sprint issues: `jira_search` with `sprint = <id>`)
 - `jira_get_transitions` — available transitions (read-only listing)
-- `jira_get_attachment` — download an attachment to disk
+- `jira_get_attachment` — download an attachment to disk (see [Attachments](#attachments))
 - `jira_set_deploy_description` — **write**: set or append the Deploy Description field
 - `jira_add_comment` — **write, opt-in** (`comments`): add a comment
 - `jira_create_issue` / `jira_update_issue` — **write, opt-in** (`issues`): create an issue, edit fields of an issue
@@ -50,6 +50,16 @@ Status changes go through `jira_transition_issue`, which takes a transition id, 
 target status name (resolved against `jira_get_transitions`; an unknown or ambiguous name is rejected
 before anything is sent), plus an optional `comment` and `fields` required by the transition screen
 (e.g. `{"resolution": {"name": "Fixed"}}`).
+
+## Attachments
+
+`jira_get_attachment` saves files as `<id>-<filename>` into a single directory, by default `jira-mcp`
+in the system temp dir. Path components in the uploaded filename are stripped, so a file can never
+land outside that directory. Downloads are limited to 50 MB, and the token is only ever sent to the
+`JIRA_BASE_URL` host. Both settings can be overridden:
+
+    -e JIRA_ATTACHMENT_DIR=/path/to/dir
+    -e JIRA_ATTACHMENT_MAX_BYTES=104857600
 
 ## Writing the Deploy Description
 

@@ -322,7 +322,9 @@ test("jira_get_attachment fetches metadata, downloads content, and saves to disk
   });
 
   const dir = await mkdtemp(join(tmpdir(), "jira-mcp-test-"));
-  const out = await getAttachment.handler(client, { attachment_id: "123", dest_dir: dir });
+  const out = await withEnv({ JIRA_ATTACHMENT_DIR: dir }, () =>
+    getAttachment.handler(client, { attachment_id: "123" }),
+  );
   assert.match(urls[0], /\/rest\/api\/2\/attachment\/123$/);
   assert.match(urls[1], /\/secure\/attachment\/123\/screenshot\.png$/);
   const parsed = JSON.parse(out);
@@ -331,6 +333,101 @@ test("jira_get_attachment fetches metadata, downloads content, and saves to disk
   assert.equal(parsed.size, payload.length);
   const saved = await readFile(parsed.path);
   assert.equal(saved.toString(), "PNGDATA");
+});
+
+async function withEnv<T>(vars: Record<string, string>, fn: () => Promise<T>): Promise<T> {
+  const saved = Object.fromEntries(Object.keys(vars).map((k) => [k, process.env[k]]));
+  Object.assign(process.env, vars);
+  try {
+    return await fn();
+  } finally {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+}
+
+function attachmentClient(
+  meta: any,
+  payload = Buffer.from("DATA"),
+  headers: Record<string, string> = {},
+) {
+  const urls: string[] = [];
+  const client = new JiraClient({
+    baseUrl: "https://jira.example.test",
+    pat: "t",
+    fetchImpl: async (url: string) => {
+      urls.push(url);
+      if (url.includes("/rest/api/2/attachment/")) {
+        return { ok: true, status: 200, json: async () => meta, text: async () => "" } as any;
+      }
+      return {
+        ok: true,
+        status: 200,
+        arrayBuffer: async () =>
+          payload.buffer.slice(payload.byteOffset, payload.byteOffset + payload.byteLength),
+        headers: { get: (h: string) => headers[h.toLowerCase()] ?? null },
+        text: async () => "",
+      } as any;
+    },
+  });
+  return { client, urls };
+}
+
+test("jira_get_attachment strips path components from the uploaded filename", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "jira-mcp-test-"));
+  const { client } = attachmentClient({
+    filename: "../../../../etc/evil.sh",
+    content: "https://jira.example.test/secure/attachment/7/x",
+  });
+  const out = JSON.parse(
+    await withEnv({ JIRA_ATTACHMENT_DIR: dir }, () =>
+      getAttachment.handler(client, { attachment_id: "7" }),
+    ),
+  );
+  assert.equal(out.filename, "evil.sh");
+  assert.equal(out.path, join(dir, "7-evil.sh"));
+});
+
+test("jira_get_attachment rejects a non-numeric attachment id without calling Jira", async () => {
+  const { client, urls } = attachmentClient({});
+  await assert.rejects(
+    () => getAttachment.handler(client, { attachment_id: "../../x" }),
+    /Invalid attachment id/,
+  );
+  assert.equal(urls.length, 0);
+});
+
+test("jira_get_attachment refuses content URLs on a foreign host", async () => {
+  const { client, urls } = attachmentClient({
+    filename: "a.png",
+    content: "https://attacker.example/steal",
+  });
+  await assert.rejects(
+    () => getAttachment.handler(client, { attachment_id: "1" }),
+    /Refusing to send credentials/,
+  );
+  assert.equal(urls.length, 1);
+});
+
+test("jira_get_attachment enforces the size limit from metadata and content-length", async () => {
+  const content = "https://jira.example.test/secure/attachment/1/a";
+  const env = { JIRA_ATTACHMENT_MAX_BYTES: "10" };
+  const big = attachmentClient({ filename: "a", size: 11, content });
+  await withEnv(env, () =>
+    assert.rejects(() => getAttachment.handler(big.client, { attachment_id: "1" }), /limit/),
+  );
+  assert.equal(big.urls.length, 1);
+  const declared = attachmentClient({ filename: "a", content }, Buffer.from("x"), {
+    "content-length": "11",
+  });
+  await withEnv(env, () =>
+    assert.rejects(
+      () => getAttachment.handler(declared.client, { attachment_id: "1" }),
+      /too large/,
+    ),
+  );
 });
 
 import { setDeployDescription } from "../src/tools/setDeployDescription.ts";
@@ -408,6 +505,16 @@ test("jira_set_deploy_description rejects an unknown mode without calling Jira",
     /mode/,
   );
   assert.equal(cap.calls.length, 0);
+});
+
+test("jira_set_deploy_description refuses to append to a non-text field", async () => {
+  const cap = { calls: [] as any[] };
+  const client = writeClient(cap, { fields: { customfield_11513: { value: "x" } } });
+  await assert.rejects(
+    () => setDeployDescription.handler(client, { issue_key: "PROJ-1", text: "y", mode: "append" }),
+    /not a text field/,
+  );
+  assert.equal(cap.calls.length, 1);
 });
 
 test("jira_set_deploy_description honours JIRA_DEPLOY_DESCRIPTION_FIELD override", async () => {
@@ -973,4 +1080,24 @@ test("registry exposes all thirteen tools with unique names", async () => {
     "jira_whoami",
   ]);
   assert.equal(new Set(names).size, names.length);
+});
+
+import { validateArgs } from "../src/tools/validate.ts";
+
+test("validateArgs checks required, types, enums, array items and unknown arguments", () => {
+  validateArgs(search.inputSchema, { jql: "x", limit: 5, fields: ["a"] });
+  validateArgs(setDeployDescription.inputSchema, { issue_key: "A-1", text: "x", mode: "append" });
+  assert.throws(() => validateArgs(search.inputSchema, {}), /Missing required argument `jql`/);
+  assert.throws(() => validateArgs(search.inputSchema, { jql: 1 }), /`jql` must be a string/);
+  assert.throws(() => validateArgs(search.inputSchema, { jql: "x", limit: "5" }), /number/);
+  assert.throws(
+    () => validateArgs(search.inputSchema, { jql: "x", fields: [1] }),
+    /array of strings/,
+  );
+  assert.throws(() => validateArgs(search.inputSchema, { jql: "x", foo: 1 }), /Unknown argument/);
+  assert.throws(
+    () =>
+      validateArgs(setDeployDescription.inputSchema, { issue_key: "A-1", text: "x", mode: "d" }),
+    /one of: replace, append/,
+  );
 });
