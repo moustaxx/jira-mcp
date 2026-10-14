@@ -2,17 +2,22 @@ import type { Tool } from "./types.ts";
 
 export const search: Tool = {
   name: "jira_search",
-  description: "Search Jira issues with a JQL query. Returns { total, startAt, issues } with key, summary, status, assignee per issue; page with start_at. Extra fields (e.g. custom fields) can be requested via `fields` and are returned raw under `extraFields`.",
+  description:
+    "Search Jira issues with a JQL query. Returns { total, startAt, issues } with key, summary, status, assignee per issue; page with start_at. Extra fields (e.g. custom fields) can be requested via `fields` and are returned raw under `extraFields`.",
   inputSchema: {
     type: "object",
     properties: {
       jql: { type: "string", description: "JQL query, e.g. 'project = PROJ AND status = Open'" },
       limit: { type: "number", description: "Max results (default 25)" },
-      start_at: { type: "number", description: "Index of the first result, for paging (default 0)" },
+      start_at: {
+        type: "number",
+        description: "Index of the first result, for paging (default 0)",
+      },
       fields: {
         type: "array",
         items: { type: "string" },
-        description: "Additional field ids to include per issue, e.g. [\"customfield_11513\"] (Deploy Description)",
+        description:
+          'Additional field ids to include per issue, e.g. ["customfield_11513"] (Deploy Description)',
       },
     },
     required: ["jql"],
@@ -37,6 +42,10 @@ export const search: Tool = {
         extraFields: Object.fromEntries(extra.map((name) => [name, it.fields?.[name] ?? null])),
       }),
     }));
-    return JSON.stringify({ total: data.total ?? null, startAt: data.startAt ?? 0, issues: rows }, null, 2);
+    return JSON.stringify(
+      { total: data.total ?? null, startAt: data.startAt ?? 0, issues: rows },
+      null,
+      2,
+    );
   },
 };

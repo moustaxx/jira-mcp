@@ -14,7 +14,8 @@ function issueRef(issue: any) {
 
 export const getIssue: Tool = {
   name: "jira_get_issue",
-  description: "Get a Jira issue by key (e.g. PROJ-17619): summary, status, assignee, reporter, type, priority, dates, description, attachments, plus linked issues, parent and subtasks. Extra fields (e.g. custom fields) can be requested via `fields` and are returned raw under `extraFields`.",
+  description:
+    "Get a Jira issue by key (e.g. PROJ-17619): summary, status, assignee, reporter, type, priority, dates, description, attachments, plus linked issues, parent and subtasks. Extra fields (e.g. custom fields) can be requested via `fields` and are returned raw under `extraFields`.",
   inputSchema: {
     type: "object",
     properties: {
@@ -22,7 +23,8 @@ export const getIssue: Tool = {
       fields: {
         type: "array",
         items: { type: "string" },
-        description: "Additional field ids to include, e.g. [\"customfield_11513\"] (Deploy Description)",
+        description:
+          'Additional field ids to include, e.g. ["customfield_11513"] (Deploy Description)',
       },
     },
     required: ["issue_key"],

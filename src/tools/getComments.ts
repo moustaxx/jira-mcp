@@ -10,7 +10,9 @@ export const getComments: Tool = {
     additionalProperties: false,
   },
   async handler(client, args) {
-    const data = await client.get(`/rest/api/2/issue/${encodeURIComponent(args.issue_key)}/comment`);
+    const data = await client.get(
+      `/rest/api/2/issue/${encodeURIComponent(args.issue_key)}/comment`,
+    );
     const comments = Array.isArray(data.comments) ? data.comments : [];
     const rows = comments.map((c: any) => ({
       author: c.author?.displayName ?? null,

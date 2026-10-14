@@ -4,7 +4,12 @@ import type { Tool } from "./types.ts";
 // Undocumented Jira Software endpoint behind the issue "Development" panel.
 const DEV_STATUS = "/rest/dev-status/1.0/issue";
 
-async function devDetail(client: JiraClient, issueId: string, applicationType: string, dataType: string) {
+async function devDetail(
+  client: JiraClient,
+  issueId: string,
+  applicationType: string,
+  dataType: string,
+) {
   const data = await client.get(`${DEV_STATUS}/detail`, { issueId, applicationType, dataType });
   return Array.isArray(data.detail) ? data.detail : [];
 }

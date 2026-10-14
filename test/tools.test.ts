@@ -9,14 +9,22 @@ function clientReturning(body: any, captured?: { url?: string }) {
     pat: "t",
     fetchImpl: async (url: string) => {
       if (captured) captured.url = url;
-      return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) } as any;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => body,
+        text: async () => JSON.stringify(body),
+      } as any;
     },
   });
 }
 
 test("jira_whoami hits /myself and returns user fields", async () => {
   const cap: any = {};
-  const client = clientReturning({ displayName: "Marek B", emailAddress: "m@b.pl", key: "mbedna" }, cap);
+  const client = clientReturning(
+    { displayName: "Marek B", emailAddress: "m@b.pl", key: "mbedna" },
+    cap,
+  );
   const out = await whoami.handler(client, {});
   assert.match(cap.url, /\/rest\/api\/2\/myself$/);
   assert.match(out, /Marek B/);
@@ -60,18 +68,38 @@ test("jira_get_issue maps issue links, parent and subtasks", async () => {
       key: "PROJ-17619",
       fields: {
         summary: "Fix checkout",
-        parent: { key: "PROJ-17000", fields: { summary: "Checkout epic", status: { name: "Open" }, issuetype: { name: "Epic" } } },
+        parent: {
+          key: "PROJ-17000",
+          fields: {
+            summary: "Checkout epic",
+            status: { name: "Open" },
+            issuetype: { name: "Epic" },
+          },
+        },
         subtasks: [
-          { key: "PROJ-17620", fields: { summary: "Sub A", status: { name: "Done" }, issuetype: { name: "Sub-task" } } },
+          {
+            key: "PROJ-17620",
+            fields: { summary: "Sub A", status: { name: "Done" }, issuetype: { name: "Sub-task" } },
+          },
         ],
         issuelinks: [
           {
             type: { name: "Blocks", inward: "is blocked by", outward: "blocks" },
-            outwardIssue: { key: "PROJ-17700", fields: { summary: "Deploy", status: { name: "Open" }, issuetype: { name: "Task" } } },
+            outwardIssue: {
+              key: "PROJ-17700",
+              fields: { summary: "Deploy", status: { name: "Open" }, issuetype: { name: "Task" } },
+            },
           },
           {
             type: { name: "Relates", inward: "relates to", outward: "relates to" },
-            inwardIssue: { key: "PROJ-17500", fields: { summary: "Old bug", status: { name: "Closed" }, issuetype: { name: "Bug" } } },
+            inwardIssue: {
+              key: "PROJ-17500",
+              fields: {
+                summary: "Old bug",
+                status: { name: "Closed" },
+                issuetype: { name: "Bug" },
+              },
+            },
           },
         ],
       },
@@ -113,7 +141,14 @@ test("jira_get_issue returns empty links/subtasks and null parent when absent", 
 test("jira_get_issue requests extra fields and returns them raw under extraFields", async () => {
   const cap: any = {};
   const client = clientReturning(
-    { key: "PROJ-1", fields: { summary: "A", customfield_11513: "MR !30 -> master", customfield_10001: { value: "X" } } },
+    {
+      key: "PROJ-1",
+      fields: {
+        summary: "A",
+        customfield_11513: "MR !30 -> master",
+        customfield_10001: { value: "X" },
+      },
+    },
     cap,
   );
   const parsed = JSON.parse(
@@ -122,7 +157,10 @@ test("jira_get_issue requests extra fields and returns them raw under extraField
       fields: ["customfield_11513", "customfield_10001", "customfield_99999"],
     }),
   );
-  assert.match(decodeURIComponent(cap.url), /fields=[^&]*,parent,customfield_11513,customfield_10001,customfield_99999(&|$)/);
+  assert.match(
+    decodeURIComponent(cap.url),
+    /fields=[^&]*,parent,customfield_11513,customfield_10001,customfield_99999(&|$)/,
+  );
   assert.deepEqual(parsed.extraFields, {
     customfield_11513: "MR !30 -> master",
     customfield_10001: { value: "X" },
@@ -138,7 +176,10 @@ test("jira_search posts jql and maps issue list", async () => {
   const client = clientReturning(
     {
       issues: [
-        { key: "PROJ-1", fields: { summary: "A", status: { name: "Open" }, assignee: { displayName: "X" } } },
+        {
+          key: "PROJ-1",
+          fields: { summary: "A", status: { name: "Open" }, assignee: { displayName: "X" } },
+        },
         { key: "PROJ-2", fields: { summary: "B", status: { name: "Done" }, assignee: null } },
       ],
     },
@@ -157,11 +198,21 @@ test("jira_search posts jql and maps issue list", async () => {
 test("jira_search requests extra fields and returns them per issue", async () => {
   const cap: any = {};
   const client = clientReturning(
-    { issues: [{ key: "PROJ-1", fields: { summary: "A", customfield_11513: "MR !30" } }, { key: "PROJ-2", fields: { summary: "B" } }] },
+    {
+      issues: [
+        { key: "PROJ-1", fields: { summary: "A", customfield_11513: "MR !30" } },
+        { key: "PROJ-2", fields: { summary: "B" } },
+      ],
+    },
     cap,
   );
-  const parsed = JSON.parse(await search.handler(client, { jql: "x", fields: ["customfield_11513"] })).issues;
-  assert.match(decodeURIComponent(cap.url), /fields=summary,status,assignee,customfield_11513(&|$)/);
+  const parsed = JSON.parse(
+    await search.handler(client, { jql: "x", fields: ["customfield_11513"] }),
+  ).issues;
+  assert.match(
+    decodeURIComponent(cap.url),
+    /fields=summary,status,assignee,customfield_11513(&|$)/,
+  );
   assert.deepEqual(parsed[0].extraFields, { customfield_11513: "MR !30" });
   assert.deepEqual(parsed[1].extraFields, { customfield_11513: null });
 });
@@ -182,7 +233,10 @@ test("jira_search defaults limit to 25", async () => {
 
 test("jira_search pages with start_at and returns total", async () => {
   const cap: any = {};
-  const client = clientReturning({ total: 120, startAt: 50, issues: [{ key: "PROJ-51", fields: { summary: "A" } }] }, cap);
+  const client = clientReturning(
+    { total: 120, startAt: 50, issues: [{ key: "PROJ-51", fields: { summary: "A" } }] },
+    cap,
+  );
   const parsed = JSON.parse(await search.handler(client, { jql: "x", start_at: 50 }));
   assert.match(cap.url, /startAt=50/);
   assert.equal(parsed.total, 120);
@@ -195,7 +249,15 @@ import { getComments } from "../src/tools/getComments.ts";
 test("jira_get_comments fetches comments endpoint and maps fields", async () => {
   const cap: any = {};
   const client = clientReturning(
-    { comments: [{ author: { displayName: "Anna K" }, created: "2026-06-02T09:00:00.000+0000", body: "Looks good" }] },
+    {
+      comments: [
+        {
+          author: { displayName: "Anna K" },
+          created: "2026-06-02T09:00:00.000+0000",
+          body: "Looks good",
+        },
+      ],
+    },
     cap,
   );
   const out = await getComments.handler(client, { issue_key: "PROJ-17619" });
@@ -241,12 +303,18 @@ test("jira_get_attachment fetches metadata, downloads content, and saves to disk
           mimeType: "image/png",
           content: "https://jira.example.test/secure/attachment/123/screenshot.png",
         };
-        return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) } as any;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => body,
+          text: async () => JSON.stringify(body),
+        } as any;
       }
       return {
         ok: true,
         status: 200,
-        arrayBuffer: async () => payload.buffer.slice(payload.byteOffset, payload.byteOffset + payload.byteLength),
+        arrayBuffer: async () =>
+          payload.buffer.slice(payload.byteOffset, payload.byteOffset + payload.byteLength),
         headers: { get: () => "image/png" },
         text: async () => "",
       } as any;
@@ -274,7 +342,12 @@ function writeClient(captured: { calls: any[] }, getBody: any = {}) {
     fetchImpl: async (url: string, init: any) => {
       captured.calls.push({ url, method: init?.method ?? "GET", body: init?.body });
       if ((init?.method ?? "GET") === "GET") {
-        return { ok: true, status: 200, json: async () => getBody, text: async () => JSON.stringify(getBody) } as any;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => getBody,
+          text: async () => JSON.stringify(getBody),
+        } as any;
       }
       return { ok: true, status: 204, json: async () => null, text: async () => "" } as any;
     },
@@ -284,11 +357,16 @@ function writeClient(captured: { calls: any[] }, getBody: any = {}) {
 test("jira_set_deploy_description replaces the field with a single PUT", async () => {
   const cap = { calls: [] as any[] };
   const client = writeClient(cap);
-  const out = await setDeployDescription.handler(client, { issue_key: "PROJ-18710", text: "MR !30 -> master" });
+  const out = await setDeployDescription.handler(client, {
+    issue_key: "PROJ-18710",
+    text: "MR !30 -> master",
+  });
   assert.equal(cap.calls.length, 1);
   assert.equal(cap.calls[0].method, "PUT");
   assert.match(cap.calls[0].url, /\/rest\/api\/2\/issue\/PROJ-18710$/);
-  assert.deepEqual(JSON.parse(cap.calls[0].body), { fields: { customfield_11513: "MR !30 -> master" } });
+  assert.deepEqual(JSON.parse(cap.calls[0].body), {
+    fields: { customfield_11513: "MR !30 -> master" },
+  });
   const parsed = JSON.parse(out);
   assert.equal(parsed.key, "PROJ-18710");
   assert.equal(parsed.mode, "replace");
@@ -298,24 +376,37 @@ test("jira_set_deploy_description replaces the field with a single PUT", async (
 test("jira_set_deploy_description appends after the existing value", async () => {
   const cap = { calls: [] as any[] };
   const client = writeClient(cap, { fields: { customfield_11513: "old line" } });
-  await setDeployDescription.handler(client, { issue_key: "PROJ-1", text: "new line", mode: "append" });
+  await setDeployDescription.handler(client, {
+    issue_key: "PROJ-1",
+    text: "new line",
+    mode: "append",
+  });
   assert.equal(cap.calls.length, 2);
   assert.equal(cap.calls[0].method, "GET");
   assert.match(cap.calls[0].url, /\/rest\/api\/2\/issue\/PROJ-1\?fields=customfield_11513$/);
-  assert.deepEqual(JSON.parse(cap.calls[1].body), { fields: { customfield_11513: "old line\n\nnew line" } });
+  assert.deepEqual(JSON.parse(cap.calls[1].body), {
+    fields: { customfield_11513: "old line\n\nnew line" },
+  });
 });
 
 test("jira_set_deploy_description appending to an empty field adds no leading blank lines", async () => {
   const cap = { calls: [] as any[] };
   const client = writeClient(cap, { fields: { customfield_11513: null } });
-  await setDeployDescription.handler(client, { issue_key: "PROJ-1", text: "first line", mode: "append" });
+  await setDeployDescription.handler(client, {
+    issue_key: "PROJ-1",
+    text: "first line",
+    mode: "append",
+  });
   assert.deepEqual(JSON.parse(cap.calls[1].body), { fields: { customfield_11513: "first line" } });
 });
 
 test("jira_set_deploy_description rejects an unknown mode without calling Jira", async () => {
   const cap = { calls: [] as any[] };
   const client = writeClient(cap);
-  await assert.rejects(() => setDeployDescription.handler(client, { issue_key: "PROJ-1", text: "x", mode: "delete" }), /mode/);
+  await assert.rejects(
+    () => setDeployDescription.handler(client, { issue_key: "PROJ-1", text: "x", mode: "delete" }),
+    /mode/,
+  );
   assert.equal(cap.calls.length, 0);
 });
 
@@ -338,17 +429,27 @@ test("jira_list_fields lists all fields filtered by name or id", async () => {
   const client = clientReturning(
     [
       { id: "summary", name: "Summary", custom: false, schema: { type: "string" } },
-      { id: "customfield_11513", name: "Deploy Description", custom: true, schema: { type: "string" } },
+      {
+        id: "customfield_11513",
+        name: "Deploy Description",
+        custom: true,
+        schema: { type: "string" },
+      },
       { id: "customfield_10001", name: "Team", custom: true, schema: { type: "option" } },
     ],
     cap,
   );
   const parsed = JSON.parse(await listFields.handler(client, { query: "DEPLOY" }));
   assert.match(cap.url, /\/rest\/api\/2\/field$/);
-  assert.deepEqual(parsed, [{ id: "customfield_11513", name: "Deploy Description", custom: true, type: "string" }]);
+  assert.deepEqual(parsed, [
+    { id: "customfield_11513", name: "Deploy Description", custom: true, type: "string" },
+  ]);
 
   const all = JSON.parse(await listFields.handler(client, {}));
-  assert.deepEqual(all.map((f: any) => f.id), ["customfield_10001", "customfield_11513", "summary"]);
+  assert.deepEqual(
+    all.map((f: any) => f.id),
+    ["customfield_10001", "customfield_11513", "summary"],
+  );
 });
 
 test("jira_list_fields with issue_key lists only fields set on the issue", async () => {
@@ -356,13 +457,21 @@ test("jira_list_fields with issue_key lists only fields set on the issue", async
   const client = clientReturning(
     {
       key: "PROJ-1",
-      names: { summary: "Summary", customfield_11513: "Deploy Description", customfield_10001: "Team", labels: "Labels" },
+      names: {
+        summary: "Summary",
+        customfield_11513: "Deploy Description",
+        customfield_10001: "Team",
+        labels: "Labels",
+      },
       fields: { summary: "A", customfield_11513: "MR !30", customfield_10001: null, labels: [] },
     },
     cap,
   );
   const parsed = JSON.parse(await listFields.handler(client, { issue_key: "PROJ-1" }));
-  assert.match(decodeURIComponent(cap.url), /\/rest\/api\/2\/issue\/PROJ-1\?fields=\*all&expand=names$/);
+  assert.match(
+    decodeURIComponent(cap.url),
+    /\/rest\/api\/2\/issue\/PROJ-1\?fields=\*all&expand=names$/,
+  );
   assert.deepEqual(parsed, [
     { id: "customfield_11513", name: "Deploy Description", custom: true },
     { id: "summary", name: "Summary", custom: false },
@@ -386,7 +495,14 @@ const changelogBody = {
       {
         created: "2026-06-02T10:00:00.000+0000",
         author: { displayName: "Marek B" },
-        items: [{ field: "Deploy Description", fieldId: "customfield_11513", fromString: null, toString: "MR !30" }],
+        items: [
+          {
+            field: "Deploy Description",
+            fieldId: "customfield_11513",
+            fromString: null,
+            toString: "MR !30",
+          },
+        ],
       },
     ],
   },
@@ -411,10 +527,20 @@ test("jira_get_changelog flattens history items", async () => {
 
 test("jira_get_changelog filters by field name or id, case-insensitive", async () => {
   const client = clientReturning(changelogBody);
-  const byName = JSON.parse(await getChangelog.handler(client, { issue_key: "PROJ-1", field: "Status" }));
-  assert.deepEqual(byName.map((r: any) => r.to), ["In Progress"]);
-  const byId = JSON.parse(await getChangelog.handler(client, { issue_key: "PROJ-1", field: "customfield_11513" }));
-  assert.deepEqual(byId.map((r: any) => r.to), ["MR !30"]);
+  const byName = JSON.parse(
+    await getChangelog.handler(client, { issue_key: "PROJ-1", field: "Status" }),
+  );
+  assert.deepEqual(
+    byName.map((r: any) => r.to),
+    ["In Progress"],
+  );
+  const byId = JSON.parse(
+    await getChangelog.handler(client, { issue_key: "PROJ-1", field: "customfield_11513" }),
+  );
+  assert.deepEqual(
+    byId.map((r: any) => r.to),
+    ["MR !30"],
+  );
 });
 
 import { getDevInfo } from "../src/tools/getDevInfo.ts";
@@ -426,8 +552,14 @@ function routedClient(routes: Array<[RegExp, any]>, urls: string[] = []) {
     fetchImpl: async (url: string) => {
       urls.push(url);
       const hit = routes.find(([re]) => re.test(url));
-      if (!hit) return { ok: false, status: 404, json: async () => null, text: async () => "" } as any;
-      return { ok: true, status: 200, json: async () => hit[1], text: async () => JSON.stringify(hit[1]) } as any;
+      if (!hit)
+        return { ok: false, status: 404, json: async () => null, text: async () => "" } as any;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => hit[1],
+        text: async () => JSON.stringify(hit[1]),
+      } as any;
     },
   });
 }
@@ -437,8 +569,19 @@ test("jira_get_dev_info collects pull requests, branches and remote links", asyn
   const client = routedClient(
     [
       [/\/issue\/PROJ-1\?fields=summary$/, { id: "10042", key: "PROJ-1", fields: { summary: "A" } }],
-      [/\/issue\/PROJ-1\/remotelink$/, [{ relationship: "mentioned in", object: { title: "MR !30", url: "https://gitlab/mr/30" } }]],
-      [/\/dev-status\/1\.0\/issue\/summary\?issueId=10042$/, { summary: { pullrequest: { byInstanceType: { gitlab: { count: 1 } } } } }],
+      [
+        /\/issue\/PROJ-1\/remotelink$/,
+        [
+          {
+            relationship: "mentioned in",
+            object: { title: "MR !30", url: "https://gitlab/mr/30" },
+          },
+        ],
+      ],
+      [
+        /\/dev-status\/1\.0\/issue\/summary\?issueId=10042$/,
+        { summary: { pullrequest: { byInstanceType: { gitlab: { count: 1 } } } } },
+      ],
       [
         /dataType=pullrequest/,
         {
@@ -460,12 +603,31 @@ test("jira_get_dev_info collects pull requests, branches and remote links", asyn
           ],
         },
       ],
-      [/dataType=branch/, { detail: [{ branches: [{ name: "feature/PROJ-1", url: "https://gitlab/b", repository: { name: "checkout" } }] }] }],
+      [
+        /dataType=branch/,
+        {
+          detail: [
+            {
+              branches: [
+                {
+                  name: "feature/PROJ-1",
+                  url: "https://gitlab/b",
+                  repository: { name: "checkout" },
+                },
+              ],
+            },
+          ],
+        },
+      ],
     ],
     urls,
   );
   const parsed = JSON.parse(await getDevInfo.handler(client, { issue_key: "PROJ-1" }));
-  assert.ok(urls.some((u) => /detail\?issueId=10042&applicationType=gitlab&dataType=pullrequest$/.test(u)));
+  assert.ok(
+    urls.some((u) =>
+      u.endsWith("detail?issueId=10042&applicationType=gitlab&dataType=pullrequest"),
+    ),
+  );
   assert.deepEqual(parsed.pullRequests, [
     {
       id: "!30",
@@ -479,7 +641,9 @@ test("jira_get_dev_info collects pull requests, branches and remote links", asyn
       lastUpdate: null,
     },
   ]);
-  assert.deepEqual(parsed.branches, [{ name: "feature/PROJ-1", url: "https://gitlab/b", repository: "checkout" }]);
+  assert.deepEqual(parsed.branches, [
+    { name: "feature/PROJ-1", url: "https://gitlab/b", repository: "checkout" },
+  ]);
   assert.equal(parsed.remoteLinks[0].url, "https://gitlab/mr/30");
   assert.equal("errors" in parsed, false);
 });
@@ -499,7 +663,10 @@ import { listBoards, listSprints } from "../src/tools/agile.ts";
 test("jira_list_boards filters by project and maps boards", async () => {
   const cap: any = {};
   const client = clientReturning(
-    { isLast: true, values: [{ id: 7, name: "PROJ board", type: "scrum", location: { projectKey: "PROJ" } }] },
+    {
+      isLast: true,
+      values: [{ id: 7, name: "PROJ board", type: "scrum", location: { projectKey: "PROJ" } }],
+    },
     cap,
   );
   const parsed = JSON.parse(await listBoards.handler(client, { project: "PROJ" }));
@@ -517,14 +684,22 @@ test("jira_list_sprints defaults to active,future and follows pages until isLast
       const body = /startAt=0&/.test(url)
         ? { isLast: false, values: [{ id: 1, name: "S1", state: "active", goal: "" }] }
         : { isLast: true, values: [{ id: 2, name: "S2", state: "future" }] };
-      return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) } as any;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => body,
+        text: async () => JSON.stringify(body),
+      } as any;
     },
   });
   const parsed = JSON.parse(await listSprints.handler(client, { board_id: 7 }));
   assert.equal(urls.length, 2);
   assert.match(decodeURIComponent(urls[0]), /\/board\/7\/sprint\?state=active,future&startAt=0&/);
   assert.match(urls[1], /startAt=1&/);
-  assert.deepEqual(parsed.map((s: any) => s.id), [1, 2]);
+  assert.deepEqual(
+    parsed.map((s: any) => s.id),
+    [1, 2],
+  );
   assert.equal(parsed[0].goal, null);
 });
 
@@ -535,8 +710,19 @@ test("jira_get_worklogs maps entries and sums time", async () => {
   const client = clientReturning(
     {
       worklogs: [
-        { author: { displayName: "Anna K" }, started: "2026-06-01T09:00:00.000+0000", timeSpent: "1h", timeSpentSeconds: 3600, comment: "review" },
-        { author: { displayName: "Marek B" }, started: "2026-06-02T09:00:00.000+0000", timeSpent: "30m", timeSpentSeconds: 1800 },
+        {
+          author: { displayName: "Anna K" },
+          started: "2026-06-01T09:00:00.000+0000",
+          timeSpent: "1h",
+          timeSpentSeconds: 3600,
+          comment: "review",
+        },
+        {
+          author: { displayName: "Marek B" },
+          started: "2026-06-02T09:00:00.000+0000",
+          timeSpent: "30m",
+          timeSpentSeconds: 1800,
+        },
       ],
     },
     cap,
@@ -558,15 +744,26 @@ function postClient(captured: { calls: any[] }, responseBody: any = {}) {
     fetchImpl: async (url: string, init: any) => {
       captured.calls.push({ url, method: init?.method ?? "GET", body: init?.body });
       const status = init?.method === "PUT" ? 204 : 201;
-      return { ok: true, status, json: async () => responseBody, text: async () => JSON.stringify(responseBody) } as any;
+      return {
+        ok: true,
+        status,
+        json: async () => responseBody,
+        text: async () => JSON.stringify(responseBody),
+      } as any;
     },
   });
 }
 
 test("jira_add_comment posts the body to the comment endpoint", async () => {
   const cap = { calls: [] as any[] };
-  const client = postClient(cap, { id: "555", author: { displayName: "Marek B" }, created: "2026-10-14T10:00:00.000+0000" });
-  const parsed = JSON.parse(await addComment.handler(client, { issue_key: "PROJ-1", body: "Deployed to test" }));
+  const client = postClient(cap, {
+    id: "555",
+    author: { displayName: "Marek B" },
+    created: "2026-10-14T10:00:00.000+0000",
+  });
+  const parsed = JSON.parse(
+    await addComment.handler(client, { issue_key: "PROJ-1", body: "Deployed to test" }),
+  );
   assert.equal(cap.calls[0].method, "POST");
   assert.match(cap.calls[0].url, /\/rest\/api\/2\/issue\/PROJ-1\/comment$/);
   assert.deepEqual(JSON.parse(cap.calls[0].body), { body: "Deployed to test" });
@@ -575,7 +772,10 @@ test("jira_add_comment posts the body to the comment endpoint", async () => {
 
 test("jira_add_comment rejects an empty body without calling Jira", async () => {
   const cap = { calls: [] as any[] };
-  await assert.rejects(() => addComment.handler(postClient(cap), { issue_key: "PROJ-1", body: "  " }), /empty/);
+  await assert.rejects(
+    () => addComment.handler(postClient(cap), { issue_key: "PROJ-1", body: "  " }),
+    /empty/,
+  );
   assert.equal(cap.calls.length, 0);
 });
 
@@ -609,7 +809,13 @@ test("jira_create_issue builds fields and lets explicit args win over fields", a
 test("jira_create_issue rejects non-object fields", async () => {
   const cap = { calls: [] as any[] };
   await assert.rejects(
-    () => createIssue.handler(postClient(cap), { project: "PROJ", issue_type: "Task", summary: "A", fields: ["x"] }),
+    () =>
+      createIssue.handler(postClient(cap), {
+        project: "PROJ",
+        issue_type: "Task",
+        summary: "A",
+        fields: ["x"],
+      }),
     /must be an object/,
   );
   assert.equal(cap.calls.length, 0);
@@ -618,7 +824,11 @@ test("jira_create_issue rejects non-object fields", async () => {
 test("jira_update_issue PUTs only the given fields", async () => {
   const cap = { calls: [] as any[] };
   const parsed = JSON.parse(
-    await updateIssue.handler(postClient(cap), { issue_key: "PROJ-1", summary: "New", fields: { labels: ["x"] } }),
+    await updateIssue.handler(postClient(cap), {
+      issue_key: "PROJ-1",
+      summary: "New",
+      fields: { labels: ["x"] },
+    }),
   );
   assert.equal(cap.calls[0].method, "PUT");
   assert.match(cap.calls[0].url, /\/rest\/api\/2\/issue\/PROJ-1$/);
@@ -628,7 +838,10 @@ test("jira_update_issue PUTs only the given fields", async () => {
 
 test("jira_update_issue with nothing to change does not call Jira", async () => {
   const cap = { calls: [] as any[] };
-  await assert.rejects(() => updateIssue.handler(postClient(cap), { issue_key: "PROJ-1" }), /Nothing to update/);
+  await assert.rejects(
+    () => updateIssue.handler(postClient(cap), { issue_key: "PROJ-1" }),
+    /Nothing to update/,
+  );
   assert.equal(cap.calls.length, 0);
 });
 
@@ -636,7 +849,10 @@ import { tools, enabledTools } from "../src/tools/index.ts";
 
 test("write tools are disabled by default", () => {
   const names = enabledTools(undefined).map((t) => t.name);
-  assert.deepEqual(names, tools.map((t) => t.name));
+  assert.deepEqual(
+    names,
+    tools.map((t) => t.name),
+  );
   assert.equal(names.includes("jira_add_comment"), false);
   assert.equal(names.includes("jira_create_issue"), false);
 });
@@ -654,7 +870,10 @@ test("JIRA_WRITE_TOOLS enables groups independently, tolerating spaces, case and
 });
 
 test("JIRA_WRITE_TOOLS rejects unknown groups", () => {
-  assert.throws(() => enabledTools("comments,transitions"), /Unknown JIRA_WRITE_TOOLS group\(s\): transitions/);
+  assert.throws(
+    () => enabledTools("comments,transitions"),
+    /Unknown JIRA_WRITE_TOOLS group\(s\): transitions/,
+  );
   assert.throws(() => enabledTools("constructor"), /Unknown/);
 });
 

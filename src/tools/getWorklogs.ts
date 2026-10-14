@@ -2,7 +2,8 @@ import type { Tool } from "./types.ts";
 
 export const getWorklogs: Tool = {
   name: "jira_get_worklogs",
-  description: "Get work logged on a Jira issue: author, start, time spent, comment per entry, plus the total in seconds.",
+  description:
+    "Get work logged on a Jira issue: author, start, time spent, comment per entry, plus the total in seconds.",
   inputSchema: {
     type: "object",
     properties: { issue_key: { type: "string", description: "Issue key, e.g. PROJ-17619" } },
@@ -10,7 +11,9 @@ export const getWorklogs: Tool = {
     additionalProperties: false,
   },
   async handler(client, args) {
-    const data = await client.get(`/rest/api/2/issue/${encodeURIComponent(args.issue_key)}/worklog`);
+    const data = await client.get(
+      `/rest/api/2/issue/${encodeURIComponent(args.issue_key)}/worklog`,
+    );
     const worklogs = (Array.isArray(data.worklogs) ? data.worklogs : []).map((w: any) => ({
       author: w.author?.displayName ?? null,
       started: w.started ?? null,

@@ -11,8 +11,16 @@ export const setDeployDescription: Tool = {
     type: "object",
     properties: {
       issue_key: { type: "string", description: "Issue key, e.g. PROJ-18710" },
-      text: { type: "string", description: "Deploy description content, e.g. merge request links with their target branch" },
-      mode: { type: "string", enum: ["replace", "append"], description: "replace (default) or append" },
+      text: {
+        type: "string",
+        description:
+          "Deploy description content, e.g. merge request links with their target branch",
+      },
+      mode: {
+        type: "string",
+        enum: ["replace", "append"],
+        description: "replace (default) or append",
+      },
     },
     required: ["issue_key", "text"],
     additionalProperties: false,
@@ -33,6 +41,10 @@ export const setDeployDescription: Tool = {
     }
 
     await client.put(`/rest/api/2/issue/${key}`, { fields: { [field]: value } });
-    return JSON.stringify({ key: args.issue_key, field, mode, length: value.length, value }, null, 2);
+    return JSON.stringify(
+      { key: args.issue_key, field, mode, length: value.length, value },
+      null,
+      2,
+    );
   },
 };

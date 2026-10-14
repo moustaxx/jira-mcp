@@ -34,7 +34,8 @@ export class JiraClient {
     if (query) {
       const parts: string[] = [];
       for (const [k, v] of Object.entries(query)) {
-        if (v !== undefined) parts.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
+        if (v !== undefined)
+          parts.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
       }
       if (parts.length) urlStr += "?" + parts.join("&");
     }

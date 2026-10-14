@@ -10,17 +10,23 @@ export const getAttachment: Tool = {
   inputSchema: {
     type: "object",
     properties: {
-      attachment_id: { type: "string", description: "Attachment id, e.g. 123456 (from jira_get_issue attachments)" },
+      attachment_id: {
+        type: "string",
+        description: "Attachment id, e.g. 123456 (from jira_get_issue attachments)",
+      },
       dest_dir: {
         type: "string",
-        description: "Optional directory to save into. Defaults to a 'jira-mcp' folder in the system temp dir.",
+        description:
+          "Optional directory to save into. Defaults to a 'jira-mcp' folder in the system temp dir.",
       },
     },
     required: ["attachment_id"],
     additionalProperties: false,
   },
   async handler(client, args) {
-    const meta = await client.get(`/rest/api/2/attachment/${encodeURIComponent(args.attachment_id)}`);
+    const meta = await client.get(
+      `/rest/api/2/attachment/${encodeURIComponent(args.attachment_id)}`,
+    );
     if (!meta?.content) {
       throw new Error(`Attachment ${args.attachment_id} has no downloadable content.`);
     }

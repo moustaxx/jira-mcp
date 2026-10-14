@@ -14,7 +14,21 @@ import { getWorklogs } from "./getWorklogs.ts";
 import { addComment } from "./addComment.ts";
 import { createIssue, updateIssue } from "./writeIssue.ts";
 
-export const tools: Tool[] = [whoami, getIssue, search, getComments, getTransitions, getAttachment, setDeployDescription, listFields, getChangelog, getDevInfo, listBoards, listSprints, getWorklogs];
+export const tools: Tool[] = [
+  whoami,
+  getIssue,
+  search,
+  getComments,
+  getTransitions,
+  getAttachment,
+  setDeployDescription,
+  listFields,
+  getChangelog,
+  getDevInfo,
+  listBoards,
+  listSprints,
+  getWorklogs,
+];
 
 // Opt-in write tools, enabled per group via JIRA_WRITE_TOOLS (comma-separated), e.g. "comments,issues".
 export const writeToolGroups: Record<string, Tool[]> = {

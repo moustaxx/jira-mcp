@@ -2,7 +2,8 @@ import type { Tool } from "./types.ts";
 
 export const addComment: Tool = {
   name: "jira_add_comment",
-  description: "Add a comment to a Jira issue (wiki markup). Write tool: only available when enabled via JIRA_WRITE_TOOLS.",
+  description:
+    "Add a comment to a Jira issue (wiki markup). Write tool: only available when enabled via JIRA_WRITE_TOOLS.",
   inputSchema: {
     type: "object",
     properties: {
@@ -13,12 +14,21 @@ export const addComment: Tool = {
     additionalProperties: false,
   },
   async handler(client, args) {
-    if (typeof args.body !== "string" || !args.body.trim()) throw new Error("Comment body must not be empty.");
-    const data = await client.post(`/rest/api/2/issue/${encodeURIComponent(args.issue_key)}/comment`, {
-      body: args.body,
-    });
+    if (typeof args.body !== "string" || !args.body.trim())
+      throw new Error("Comment body must not be empty.");
+    const data = await client.post(
+      `/rest/api/2/issue/${encodeURIComponent(args.issue_key)}/comment`,
+      {
+        body: args.body,
+      },
+    );
     return JSON.stringify(
-      { key: args.issue_key, id: data?.id ?? null, author: data?.author?.displayName ?? null, created: data?.created ?? null },
+      {
+        key: args.issue_key,
+        id: data?.id ?? null,
+        author: data?.author?.displayName ?? null,
+        created: data?.created ?? null,
+      },
       null,
       2,
     );

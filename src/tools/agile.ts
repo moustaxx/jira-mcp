@@ -5,7 +5,11 @@ const AGILE = "/rest/agile/1.0";
 // Safety cap: boards with years of closed sprints can have hundreds of pages.
 const MAX_PAGES = 20;
 
-async function fetchAll(client: JiraClient, path: string, query: Record<string, string | undefined>) {
+async function fetchAll(
+  client: JiraClient,
+  path: string,
+  query: Record<string, string | undefined>,
+) {
   const values: any[] = [];
   for (let page = 0; page < MAX_PAGES; page++) {
     const data = await client.get(path, { ...query, startAt: values.length, maxResults: 50 });
@@ -18,7 +22,8 @@ async function fetchAll(client: JiraClient, path: string, query: Record<string, 
 
 export const listBoards: Tool = {
   name: "jira_list_boards",
-  description: "List Jira Software boards (id, name, type, project). Use the id with jira_list_sprints.",
+  description:
+    "List Jira Software boards (id, name, type, project). Use the id with jira_list_sprints.",
   inputSchema: {
     type: "object",
     properties: {
@@ -28,7 +33,10 @@ export const listBoards: Tool = {
     additionalProperties: false,
   },
   async handler(client, args) {
-    const boards = await fetchAll(client, `${AGILE}/board`, { projectKeyOrId: args.project, name: args.name });
+    const boards = await fetchAll(client, `${AGILE}/board`, {
+      projectKeyOrId: args.project,
+      name: args.name,
+    });
     const rows = boards.map((b: any) => ({
       id: b.id,
       name: b.name ?? null,
@@ -47,15 +55,22 @@ export const listSprints: Tool = {
     type: "object",
     properties: {
       board_id: { type: "number", description: "Board id from jira_list_boards" },
-      state: { type: "string", description: "Comma-separated: active, future, closed (default active,future)" },
+      state: {
+        type: "string",
+        description: "Comma-separated: active, future, closed (default active,future)",
+      },
     },
     required: ["board_id"],
     additionalProperties: false,
   },
   async handler(client, args) {
-    const sprints = await fetchAll(client, `${AGILE}/board/${encodeURIComponent(args.board_id)}/sprint`, {
-      state: args.state ?? "active,future",
-    });
+    const sprints = await fetchAll(
+      client,
+      `${AGILE}/board/${encodeURIComponent(args.board_id)}/sprint`,
+      {
+        state: args.state ?? "active,future",
+      },
+    );
     const rows = sprints.map((s: any) => ({
       id: s.id,
       name: s.name ?? null,
