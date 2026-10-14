@@ -845,6 +845,80 @@ test("jira_update_issue with nothing to change does not call Jira", async () => 
   assert.equal(cap.calls.length, 0);
 });
 
+import { transitionIssue } from "../src/tools/transitionIssue.ts";
+
+function transitionClient(captured: { calls: any[] }) {
+  return new JiraClient({
+    baseUrl: "https://jira.example.test",
+    pat: "t",
+    fetchImpl: async (url: string, init: any) => {
+      const method = init?.method ?? "GET";
+      captured.calls.push({ url, method, body: init?.body });
+      const body =
+        method === "GET"
+          ? {
+              transitions: [
+                { id: "21", name: "Start Progress", to: { name: "In Progress" } },
+                { id: "31", name: "Done", to: { name: "Closed" } },
+                { id: "41", name: "Reject", to: { name: "Closed" } },
+              ],
+            }
+          : null;
+      return {
+        ok: true,
+        status: method === "GET" ? 200 : 204,
+        json: async () => body,
+        text: async () => JSON.stringify(body),
+      } as any;
+    },
+  });
+}
+
+test("jira_transition_issue resolves by id, transition name or target status", async () => {
+  for (const transition of ["21", "start progress", "In Progress"]) {
+    const cap = { calls: [] as any[] };
+    const parsed = JSON.parse(
+      await transitionIssue.handler(transitionClient(cap), { issue_key: "PROJ-1", transition }),
+    );
+    assert.equal(cap.calls[1].method, "POST");
+    assert.match(cap.calls[1].url, /\/rest\/api\/2\/issue\/PROJ-1\/transitions$/);
+    assert.deepEqual(JSON.parse(cap.calls[1].body), { transition: { id: "21" } });
+    assert.deepEqual(parsed, { key: "PROJ-1", transition: "Start Progress", status: "In Progress" });
+  }
+});
+
+test("jira_transition_issue sends comment and fields with the transition", async () => {
+  const cap = { calls: [] as any[] };
+  await transitionIssue.handler(transitionClient(cap), {
+    issue_key: "PROJ-1",
+    transition: "Done",
+    comment: "Released",
+    fields: { resolution: { name: "Fixed" } },
+  });
+  assert.deepEqual(JSON.parse(cap.calls[1].body), {
+    transition: { id: "31" },
+    fields: { resolution: { name: "Fixed" } },
+    update: { comment: [{ add: { body: "Released" } }] },
+  });
+});
+
+test("jira_transition_issue rejects unknown or ambiguous transitions without posting", async () => {
+  const cap = { calls: [] as any[] };
+  await assert.rejects(
+    () => transitionIssue.handler(transitionClient(cap), { issue_key: "PROJ-1", transition: "QA" }),
+    /No transition "QA".*Start Progress \(21\) → In Progress/,
+  );
+  await assert.rejects(
+    () =>
+      transitionIssue.handler(transitionClient(cap), { issue_key: "PROJ-1", transition: "Closed" }),
+    /ambiguous.*Done \(31\).*Reject \(41\)/,
+  );
+  assert.equal(
+    cap.calls.some((c) => c.method === "POST"),
+    false,
+  );
+});
+
 import { tools, enabledTools } from "../src/tools/index.ts";
 
 test("write tools are disabled by default", () => {
@@ -855,6 +929,7 @@ test("write tools are disabled by default", () => {
   );
   assert.equal(names.includes("jira_add_comment"), false);
   assert.equal(names.includes("jira_create_issue"), false);
+  assert.equal(names.includes("jira_transition_issue"), false);
 });
 
 test("JIRA_WRITE_TOOLS enables groups independently, tolerating spaces, case and duplicates", () => {
@@ -864,6 +939,9 @@ test("JIRA_WRITE_TOOLS enables groups independently, tolerating spaces, case and
 
   const both = enabledTools(" Issues , comments,issues ").map((t) => t.name);
   assert.equal(both.length, tools.length + 3);
+
+  const transitions = enabledTools("transitions").map((t) => t.name);
+  assert.deepEqual(transitions.slice(tools.length), ["jira_transition_issue"]);
   assert.ok(both.includes("jira_create_issue"));
   assert.ok(both.includes("jira_update_issue"));
   assert.equal(new Set(both).size, both.length);
@@ -871,8 +949,8 @@ test("JIRA_WRITE_TOOLS enables groups independently, tolerating spaces, case and
 
 test("JIRA_WRITE_TOOLS rejects unknown groups", () => {
   assert.throws(
-    () => enabledTools("comments,transitions"),
-    /Unknown JIRA_WRITE_TOOLS group\(s\): transitions/,
+    () => enabledTools("comments,workflow"),
+    /Unknown JIRA_WRITE_TOOLS group\(s\): workflow/,
   );
   assert.throws(() => enabledTools("constructor"), /Unknown/);
 });

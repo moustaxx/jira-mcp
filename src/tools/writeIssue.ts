@@ -43,7 +43,7 @@ export const createIssue: Tool = {
 export const updateIssue: Tool = {
   name: "jira_update_issue",
   description:
-    "Edit fields of an existing Jira issue (summary, description and any other field by id). Does not change status; transitions are not supported. Write tool: only available when enabled via JIRA_WRITE_TOOLS.",
+    "Edit fields of an existing Jira issue (summary, description and any other field by id). Does not change status (use jira_transition_issue). Write tool: only available when enabled via JIRA_WRITE_TOOLS.",
   inputSchema: {
     type: "object",
     properties: {

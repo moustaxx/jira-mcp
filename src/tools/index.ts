@@ -13,6 +13,7 @@ import { listBoards, listSprints } from "./agile.ts";
 import { getWorklogs } from "./getWorklogs.ts";
 import { addComment } from "./addComment.ts";
 import { createIssue, updateIssue } from "./writeIssue.ts";
+import { transitionIssue } from "./transitionIssue.ts";
 
 export const tools: Tool[] = [
   whoami,
@@ -34,6 +35,7 @@ export const tools: Tool[] = [
 export const writeToolGroups: Record<string, Tool[]> = {
   comments: [addComment],
   issues: [createIssue, updateIssue],
+  transitions: [transitionIssue],
 };
 
 export function enabledTools(writeToolsEnv: string | undefined): Tool[] {

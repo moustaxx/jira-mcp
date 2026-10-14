@@ -1,6 +1,6 @@
 # jira-mcp
 
-MCP server for self-hosted Jira (Server/Data Center). Read-only by default apart from one writable field: Deploy Description. Comments and issue create/edit can be enabled explicitly (see [Optional write tools](#optional-write-tools)).
+MCP server for self-hosted Jira (Server/Data Center). Read-only by default apart from one writable field: Deploy Description. Comments, issue create/edit and status transitions can be enabled explicitly (see [Optional write tools](#optional-write-tools)).
 
 ## Build
 
@@ -32,6 +32,7 @@ The instance URL is read from `JIRA_BASE_URL` and is never baked into the code.
 - `jira_set_deploy_description` — **write**: set or append the Deploy Description field
 - `jira_add_comment` — **write, opt-in** (`comments`): add a comment
 - `jira_create_issue` / `jira_update_issue` — **write, opt-in** (`issues`): create an issue, edit fields of an issue
+- `jira_transition_issue` — **write, opt-in** (`transitions`): change status by running a workflow transition
 
 ## Optional write tools
 
@@ -40,10 +41,15 @@ group with a comma-separated `JIRA_WRITE_TOOLS`:
 
     -e JIRA_WRITE_TOOLS=comments          # jira_add_comment
     -e JIRA_WRITE_TOOLS=issues            # jira_create_issue, jira_update_issue
-    -e JIRA_WRITE_TOOLS=comments,issues
+    -e JIRA_WRITE_TOOLS=transitions       # jira_transition_issue
+    -e JIRA_WRITE_TOOLS=comments,issues,transitions
 
 An unknown group name stops the server at startup, so a typo never silently leaves a tool off.
 `jira_update_issue` edits fields only (summary, description, any field by id); it never changes status.
+Status changes go through `jira_transition_issue`, which takes a transition id, transition name or
+target status name (resolved against `jira_get_transitions`; an unknown or ambiguous name is rejected
+before anything is sent), plus an optional `comment` and `fields` required by the transition screen
+(e.g. `{"resolution": {"name": "Fixed"}}`).
 
 ## Writing the Deploy Description
 
