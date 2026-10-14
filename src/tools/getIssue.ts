@@ -14,15 +14,25 @@ function issueRef(issue: any) {
 
 export const getIssue: Tool = {
   name: "jira_get_issue",
-  description: "Get a Jira issue by key (e.g. PROJ-17619): summary, status, assignee, reporter, type, priority, dates, description, attachments, plus linked issues, parent and subtasks.",
+  description: "Get a Jira issue by key (e.g. PROJ-17619): summary, status, assignee, reporter, type, priority, dates, description, attachments, plus linked issues, parent and subtasks. Extra fields (e.g. custom fields) can be requested via `fields` and are returned raw under `extraFields`.",
   inputSchema: {
     type: "object",
-    properties: { issue_key: { type: "string", description: "Issue key, e.g. PROJ-17619" } },
+    properties: {
+      issue_key: { type: "string", description: "Issue key, e.g. PROJ-17619" },
+      fields: {
+        type: "array",
+        items: { type: "string" },
+        description: "Additional field ids to include, e.g. [\"customfield_11513\"] (Deploy Description)",
+      },
+    },
     required: ["issue_key"],
     additionalProperties: false,
   },
   async handler(client, args) {
-    const data = await client.get(`/rest/api/2/issue/${encodeURIComponent(args.issue_key)}`, { fields: FIELDS });
+    const extra: string[] = Array.isArray(args.fields) ? args.fields : [];
+    const data = await client.get(`/rest/api/2/issue/${encodeURIComponent(args.issue_key)}`, {
+      fields: [FIELDS, ...extra].join(","),
+    });
     const f = data.fields ?? {};
     return JSON.stringify(
       {
@@ -58,6 +68,9 @@ export const getIssue: Tool = {
               };
             })
           : [],
+        ...(extra.length > 0 && {
+          extraFields: Object.fromEntries(extra.map((name) => [name, f[name] ?? null])),
+        }),
       },
       null,
       2,

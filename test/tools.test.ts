@@ -107,6 +107,28 @@ test("jira_get_issue returns empty links/subtasks and null parent when absent", 
   assert.deepEqual(parsed.links, []);
   assert.deepEqual(parsed.subtasks, []);
   assert.equal(parsed.parent, null);
+  assert.equal("extraFields" in parsed, false);
+});
+
+test("jira_get_issue requests extra fields and returns them raw under extraFields", async () => {
+  const cap: any = {};
+  const client = clientReturning(
+    { key: "PROJ-1", fields: { summary: "A", customfield_11513: "MR !30 -> master", customfield_10001: { value: "X" } } },
+    cap,
+  );
+  const parsed = JSON.parse(
+    await getIssue.handler(client, {
+      issue_key: "PROJ-1",
+      fields: ["customfield_11513", "customfield_10001", "customfield_99999"],
+    }),
+  );
+  assert.match(decodeURIComponent(cap.url), /fields=[^&]*,parent,customfield_11513,customfield_10001,customfield_99999(&|$)/);
+  assert.deepEqual(parsed.extraFields, {
+    customfield_11513: "MR !30 -> master",
+    customfield_10001: { value: "X" },
+    customfield_99999: null,
+  });
+  assert.equal(parsed.summary, "A");
 });
 
 import { search } from "../src/tools/search.ts";

@@ -1,7 +1,10 @@
+// Narrower than `typeof fetch`: the client only ever passes a URL string.
+export type FetchImpl = (url: string, init?: RequestInit) => Promise<Response>;
+
 export interface JiraConfig {
   baseUrl: string;
   pat: string;
-  fetchImpl?: typeof fetch;
+  fetchImpl?: FetchImpl;
 }
 
 export class JiraError extends Error {
@@ -18,7 +21,7 @@ type QueryValue = string | number | undefined;
 export class JiraClient {
   private readonly baseUrl: string;
   private readonly pat: string;
-  private readonly fetchImpl: typeof fetch;
+  private readonly fetchImpl: FetchImpl;
 
   constructor(cfg: JiraConfig) {
     this.baseUrl = cfg.baseUrl.replace(/\/+$/, "");
