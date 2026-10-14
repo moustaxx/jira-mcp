@@ -22,13 +22,18 @@ function clientReturning(body: any, captured?: { url?: string }) {
 test("jira_whoami hits /myself and returns user fields", async () => {
   const cap: any = {};
   const client = clientReturning(
-    { displayName: "Marek B", emailAddress: "m@b.pl", key: "mbedna" },
+    { displayName: "Marek B", emailAddress: "m@b.pl", key: "mbilski" },
     cap,
   );
   const out = await whoami.handler(client, {});
   assert.match(cap.url, /\/rest\/api\/2\/myself$/);
   assert.match(out, /Marek B/);
   assert.match(out, /m@b\.pl/);
+});
+
+test("jira_whoami falls back to name when key is missing and nulls absent fields", async () => {
+  const parsed = JSON.parse(await whoami.handler(clientReturning({ name: "mbilski" }), {}));
+  assert.deepEqual(parsed, { displayName: null, email: null, key: "mbilski" });
 });
 
 import { getIssue } from "../src/tools/getIssue.ts";
@@ -136,6 +141,33 @@ test("jira_get_issue returns empty links/subtasks and null parent when absent", 
   assert.deepEqual(parsed.subtasks, []);
   assert.equal(parsed.parent, null);
   assert.equal("extraFields" in parsed, false);
+});
+
+test("jira_get_issue maps attachments with null defaults for missing metadata", async () => {
+  const client = clientReturning({
+    key: "PROJ-1",
+    fields: {
+      attachment: [
+        { id: "100", filename: "shot.png", mimeType: "image/png", size: 2048 },
+        { id: "101", filename: "notes.txt" },
+      ],
+    },
+  });
+  const parsed = JSON.parse(await getIssue.handler(client, { issue_key: "PROJ-1" }));
+  assert.deepEqual(parsed.attachments, [
+    { id: "100", filename: "shot.png", mimeType: "image/png", size: 2048 },
+    { id: "101", filename: "notes.txt", mimeType: null, size: null },
+  ]);
+});
+
+test("jira_get_issue encodes the issue key and tolerates a response without fields", async () => {
+  const cap: any = {};
+  const client = clientReturning({ key: "PROJ-1" }, cap);
+  const parsed = JSON.parse(await getIssue.handler(client, { issue_key: "PROJ 1/x" }));
+  assert.match(cap.url, /\/rest\/api\/2\/issue\/PROJ%201%2Fx\?/);
+  assert.equal(parsed.summary, null);
+  assert.equal(parsed.status, null);
+  assert.deepEqual(parsed.attachments, []);
 });
 
 test("jira_get_issue requests extra fields and returns them raw under extraFields", async () => {
@@ -283,6 +315,31 @@ test("jira_get_transitions lists available transitions", async () => {
   assert.equal(parsed[0].to, "In Progress");
 });
 
+test("comments and transitions return empty lists or nulls for incomplete responses", async () => {
+  assert.deepEqual(
+    JSON.parse(await getComments.handler(clientReturning({}), { issue_key: "PROJ-1" })),
+    [],
+  );
+  assert.deepEqual(
+    JSON.parse(
+      await getComments.handler(clientReturning({ comments: [{}] }), { issue_key: "E-1" }),
+    ),
+    [{ author: null, created: null, body: null }],
+  );
+  assert.deepEqual(
+    JSON.parse(await getTransitions.handler(clientReturning({}), { issue_key: "PROJ-1" })),
+    [],
+  );
+  assert.deepEqual(
+    JSON.parse(
+      await getTransitions.handler(clientReturning({ transitions: [{ id: "1", name: "X" }] }), {
+        issue_key: "PROJ-1",
+      }),
+    ),
+    [{ id: "1", name: "X", to: null }],
+  );
+});
+
 import { getAttachment } from "../src/tools/getAttachment.ts";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -409,6 +466,46 @@ test("jira_get_attachment refuses content URLs on a foreign host", async () => {
     /Refusing to send credentials/,
   );
   assert.equal(urls.length, 1);
+});
+
+test("jira_get_attachment fails when metadata has no content URL", async () => {
+  const { client, urls } = attachmentClient({ filename: "a.png" });
+  await assert.rejects(
+    () => getAttachment.handler(client, { attachment_id: "5" }),
+    /Attachment 5 has no downloadable content/,
+  );
+  assert.equal(urls.length, 1);
+});
+
+test("jira_get_attachment falls back to the id when the filename is unusable", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "jira-mcp-test-"));
+  for (const filename of [undefined, "..", "\\", "\u0000\u0001"]) {
+    const { client } = attachmentClient({
+      filename,
+      content: "https://jira.example.test/secure/attachment/9/x",
+    });
+    const out = JSON.parse(
+      await withEnv({ JIRA_ATTACHMENT_DIR: dir }, () =>
+        getAttachment.handler(client, { attachment_id: "9" }),
+      ),
+    );
+    assert.equal(out.path, join(dir, "9-9"), `filename ${JSON.stringify(filename)}`);
+    assert.equal(out.mimeType, null);
+  }
+});
+
+test("jira_get_attachment strips control characters from the filename", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "jira-mcp-test-"));
+  const { client } = attachmentClient({
+    filename: "re\u0007port\n.pdf",
+    content: "https://jira.example.test/secure/attachment/3/x",
+  });
+  const out = JSON.parse(
+    await withEnv({ JIRA_ATTACHMENT_DIR: dir }, () =>
+      getAttachment.handler(client, { attachment_id: "3" }),
+    ),
+  );
+  assert.equal(out.filename, "report.pdf");
 });
 
 test("jira_get_attachment enforces the size limit from metadata and content-length", async () => {
@@ -585,6 +682,16 @@ test("jira_list_fields with issue_key lists only fields set on the issue", async
   ]);
 });
 
+test("jira_list_fields with issue_key applies the query and tolerates missing names", async () => {
+  const client = clientReturning({
+    fields: { customfield_11513: "MR !30", summary: "A" },
+  });
+  const parsed = JSON.parse(
+    await listFields.handler(client, { issue_key: "PROJ-1", query: "CUSTOMFIELD" }),
+  );
+  assert.deepEqual(parsed, [{ id: "customfield_11513", name: null, custom: true }]);
+});
+
 import { getChangelog } from "../src/tools/getChangelog.ts";
 
 const changelogBody = {
@@ -648,6 +755,23 @@ test("jira_get_changelog filters by field name or id, case-insensitive", async (
     byId.map((r: any) => r.to),
     ["MR !30"],
   );
+});
+
+test("jira_get_changelog falls back to raw values and handles missing histories", async () => {
+  const client = clientReturning({
+    changelog: {
+      histories: [
+        { items: [{ field: "assignee", from: "u1", to: "u2" }] },
+        { created: "2026-06-02T10:00:00.000+0000" },
+      ],
+    },
+  });
+  const parsed = JSON.parse(await getChangelog.handler(client, { issue_key: "PROJ-1" }));
+  assert.deepEqual(parsed, [
+    { created: null, author: null, field: "assignee", fieldId: null, from: "u1", to: "u2" },
+  ]);
+  const empty = JSON.parse(await getChangelog.handler(clientReturning({}), { issue_key: "E-1" }));
+  assert.deepEqual(empty, []);
 });
 
 import { getDevInfo } from "../src/tools/getDevInfo.ts";
@@ -765,6 +889,32 @@ test("jira_get_dev_info reports failing sources under errors instead of throwing
   assert.match(parsed.errors[1], /^dev-status: Not found/);
 });
 
+test("jira_get_dev_info keeps other instance types when one detail call fails", async () => {
+  const client = routedClient([
+    [/\/issue\/PROJ-1\?fields=summary$/, { id: "1", key: "PROJ-1" }],
+    [/\/issue\/PROJ-1\/remotelink$/, [{ object: {}, application: { type: "gitlab" } }]],
+    [
+      /\/dev-status\/1\.0\/issue\/summary/,
+      {
+        summary: {
+          pullrequest: { byInstanceType: { github: {} } },
+          branch: { byInstanceType: { gitlab: {} } },
+        },
+      },
+    ],
+    [/applicationType=gitlab&dataType=pullrequest/, { detail: [{}] }],
+    [/applicationType=gitlab&dataType=branch/, { detail: [{ branches: [{ name: "main" }] }] }],
+  ]);
+  const parsed = JSON.parse(await getDevInfo.handler(client, { issue_key: "PROJ-1" }));
+  assert.deepEqual(parsed.errors.length, 1);
+  assert.match(parsed.errors[0], /^dev-status github: Not found/);
+  assert.deepEqual(parsed.pullRequests, []);
+  assert.deepEqual(parsed.branches, [{ name: "main", url: null, repository: null }]);
+  assert.deepEqual(parsed.remoteLinks, [
+    { title: null, url: null, relationship: null, application: "gitlab" },
+  ]);
+});
+
 import { listBoards, listSprints } from "../src/tools/agile.ts";
 
 test("jira_list_boards filters by project and maps boards", async () => {
@@ -810,6 +960,44 @@ test("jira_list_sprints defaults to active,future and follows pages until isLast
   assert.equal(parsed[0].goal, null);
 });
 
+function pagingClient(pageFor: (url: string) => any, urls: string[]) {
+  return new JiraClient({
+    baseUrl: "https://jira.example.test",
+    pat: "t",
+    fetchImpl: async (url: string) => {
+      urls.push(url);
+      const body = pageFor(url);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => body,
+        text: async () => JSON.stringify(body),
+      } as any;
+    },
+  });
+}
+
+test("jira_list_sprints stops paging after 20 pages even if Jira never reports isLast", async () => {
+  const urls: string[] = [];
+  const client = pagingClient(() => ({ isLast: false, values: [{ id: 1 }] }), urls);
+  const parsed = JSON.parse(await listSprints.handler(client, { board_id: 7, state: "closed" }));
+  assert.equal(urls.length, 20);
+  assert.equal(parsed.length, 20);
+  assert.match(urls[0], /state=closed&/);
+});
+
+test("jira_list_boards stops on an empty page and maps missing fields to null", async () => {
+  const urls: string[] = [];
+  const client = pagingClient(
+    (url) => (/startAt=0&/.test(url) ? { isLast: false, values: [{ id: 3 }] } : { isLast: false }),
+    urls,
+  );
+  const parsed = JSON.parse(await listBoards.handler(client, {}));
+  assert.equal(urls.length, 2);
+  assert.match(urls[0], /\/board\?startAt=0&maxResults=50$/);
+  assert.deepEqual(parsed, [{ id: 3, name: null, type: null, project: null }]);
+});
+
 import { getWorklogs } from "../src/tools/getWorklogs.ts";
 
 test("jira_get_worklogs maps entries and sums time", async () => {
@@ -839,6 +1027,22 @@ test("jira_get_worklogs maps entries and sums time", async () => {
   assert.equal(parsed.totalSeconds, 5400);
   assert.equal(parsed.worklogs[0].comment, "review");
   assert.equal(parsed.worklogs[1].comment, null);
+});
+
+test("jira_get_worklogs treats missing time as zero and an absent list as empty", async () => {
+  const one = JSON.parse(
+    await getWorklogs.handler(clientReturning({ worklogs: [{ comment: "" }] }), {
+      issue_key: "PROJ-1",
+    }),
+  );
+  assert.deepEqual(one, {
+    totalSeconds: 0,
+    worklogs: [
+      { author: null, started: null, timeSpent: null, timeSpentSeconds: 0, comment: null },
+    ],
+  });
+  const none = JSON.parse(await getWorklogs.handler(clientReturning({}), { issue_key: "PROJ-1" }));
+  assert.deepEqual(none, { totalSeconds: 0, worklogs: [] });
 });
 
 import { addComment } from "../src/tools/addComment.ts";
@@ -884,6 +1088,13 @@ test("jira_add_comment rejects an empty body without calling Jira", async () => 
     /empty/,
   );
   assert.equal(cap.calls.length, 0);
+});
+
+test("jira_add_comment returns nulls when Jira echoes no comment data", async () => {
+  const parsed = JSON.parse(
+    await addComment.handler(postClient({ calls: [] }), { issue_key: "PROJ-1", body: "x" }),
+  );
+  assert.deepEqual(parsed, { key: "PROJ-1", id: null, author: null, created: null });
 });
 
 test("jira_create_issue builds fields and lets explicit args win over fields", async () => {
@@ -1026,6 +1237,40 @@ test("jira_transition_issue rejects unknown or ambiguous transitions without pos
   );
 });
 
+test("jira_transition_issue validates transition and fields before calling Jira", async () => {
+  const cap = { calls: [] as any[] };
+  const client = transitionClient(cap);
+  await assert.rejects(
+    () => transitionIssue.handler(client, { issue_key: "PROJ-1", transition: "  " }),
+    /must not be empty/,
+  );
+  for (const fields of [null, [], "x"]) {
+    await assert.rejects(
+      () => transitionIssue.handler(client, { issue_key: "PROJ-1", transition: "21", fields }),
+      /`fields` must be an object/,
+    );
+  }
+  assert.equal(cap.calls.length, 0);
+});
+
+test("jira_transition_issue ignores a blank comment", async () => {
+  const cap = { calls: [] as any[] };
+  await transitionIssue.handler(transitionClient(cap), {
+    issue_key: "PROJ-1",
+    transition: "21",
+    comment: "   ",
+  });
+  assert.deepEqual(JSON.parse(cap.calls[1].body), { transition: { id: "21" } });
+});
+
+test("jira_transition_issue reports 'none' when the issue has no transitions", async () => {
+  const client = clientReturning({});
+  await assert.rejects(
+    () => transitionIssue.handler(client, { issue_key: "PROJ-1", transition: "Done" }),
+    /No transition "Done" available for this issue\. Available: none\./,
+  );
+});
+
 import { tools, enabledTools } from "../src/tools/index.ts";
 
 test("write tools are disabled by default", () => {
@@ -1100,4 +1345,20 @@ test("validateArgs checks required, types, enums, array items and unknown argume
       validateArgs(setDeployDescription.inputSchema, { issue_key: "A-1", text: "x", mode: "d" }),
     /one of: replace, append/,
   );
+});
+
+test("validateArgs handles objects, nulls, undefined values and open schemas", () => {
+  const schema = {
+    properties: { obj: { type: "object" }, n: { type: "number" }, any: {} },
+    required: ["obj"],
+  };
+  validateArgs(schema, { obj: {}, n: undefined, any: [1], extra: "allowed" });
+  assert.throws(() => validateArgs(schema, { obj: null }), /Missing required argument `obj`/);
+  for (const obj of [[], "x"]) {
+    assert.throws(() => validateArgs(schema, { obj }), /`obj` must be a object/);
+  }
+  for (const n of [NaN, Infinity]) {
+    assert.throws(() => validateArgs(schema, { obj: {}, n }), /`n` must be a number/);
+  }
+  validateArgs({}, { anything: 1 });
 });

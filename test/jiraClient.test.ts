@@ -53,6 +53,80 @@ test("maps 401 to auth error", async () => {
   );
 });
 
+test("encodes query keys and values and omits '?' when every value is undefined", async () => {
+  const cap: any = {};
+  const client = new JiraClient({
+    baseUrl: "https://jira.example.test",
+    pat: "t",
+    fetchImpl: fakeFetch(cap, { ok: true, status: 200, body: {} }),
+  });
+  await client.get("/search", { jql: "project = PROJ & x", "a b": 5 });
+  assert.equal(
+    cap.url,
+    "https://jira.example.test/search?jql=project%20%3D%20PROJ%20%26%20x&a%20b=5",
+  );
+  await client.get("/search", { skip: undefined });
+  assert.equal(cap.url, "https://jira.example.test/search");
+  assert.equal(cap.headers.Accept, "application/json");
+  assert.equal("Content-Type" in cap.headers, false);
+});
+
+test("rejects an invalid base URL at construction", () => {
+  assert.throws(() => new JiraClient({ baseUrl: "not a url", pat: "t" }));
+});
+
+test("maps 403 to permission denied", async () => {
+  const client = new JiraClient({
+    baseUrl: "https://x",
+    pat: "t",
+    fetchImpl: fakeFetch({}, { ok: false, status: 403, body: "" }),
+  });
+  await assert.rejects(
+    () => client.get("/x"),
+    (e: any) => e instanceof JiraError && e.status === 403 && /Permission denied/.test(e.message),
+  );
+});
+
+test("truncates long error bodies and survives an unreadable body", async () => {
+  const long = new JiraClient({
+    baseUrl: "https://x",
+    pat: "t",
+    fetchImpl: fakeFetch({}, { ok: false, status: 502, body: "y".repeat(1000) }),
+  });
+  await assert.rejects(
+    () => long.get("/x"),
+    (e: any) => e.message === `Jira request failed (502): ${"y".repeat(300)}`,
+  );
+  const unreadable = new JiraClient({
+    baseUrl: "https://x",
+    pat: "t",
+    fetchImpl: async () =>
+      ({
+        ok: false,
+        status: 500,
+        text: async () => {
+          throw new Error("stream broken");
+        },
+      }) as any,
+  });
+  await assert.rejects(() => unreadable.get("/x"), /^JiraError: Jira request failed \(500\): $/);
+});
+
+test("rethrows network errors other than timeouts unchanged", async () => {
+  const boom = new TypeError("fetch failed");
+  const client = new JiraClient({
+    baseUrl: "https://x",
+    pat: "t",
+    fetchImpl: async () => {
+      throw boom;
+    },
+  });
+  await assert.rejects(
+    () => client.get("/x"),
+    (e) => e === boom,
+  );
+});
+
 test("maps 404 to not found", async () => {
   const client = new JiraClient({
     baseUrl: "https://x",
@@ -212,4 +286,45 @@ test("getBinary sends the token only to the Jira origin", async () => {
   );
   await assert.rejects(() => client.getBinary("http://jira.example.test/a"), /Refusing/);
   assert.deepEqual(urls, ["https://jira.example.test/secure/attachment/1/a"]);
+});
+
+test("getBinary resolves relative paths, skips the JSON Accept header and returns the content type", async () => {
+  const cap: any = {};
+  const client = new JiraClient({
+    baseUrl: "https://jira.example.test/jira/",
+    pat: "secret",
+    fetchImpl: async (url: string, init: any) => {
+      cap.url = url;
+      cap.headers = init.headers;
+      return {
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => new TextEncoder().encode("abc").buffer,
+        headers: { get: (h: string) => (h === "content-type" ? "text/plain" : null) },
+      } as any;
+    },
+  });
+  const out = await client.getBinary("/secure/attachment/1/a.txt", 3);
+  assert.equal(cap.url, "https://jira.example.test/jira/secure/attachment/1/a.txt");
+  assert.deepEqual(cap.headers, { Authorization: "Bearer secret" });
+  assert.equal(out.data.toString(), "abc");
+  assert.equal(out.contentType, "text/plain");
+});
+
+test("getBinary enforces maxBytes on the actual body when content-length is absent", async () => {
+  const client = new JiraClient({
+    baseUrl: "https://jira.example.test",
+    pat: "t",
+    fetchImpl: async () =>
+      ({
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => new ArrayBuffer(5),
+        headers: { get: () => null },
+      }) as any,
+  });
+  await assert.rejects(
+    () => client.getBinary("/a", 4),
+    /Attachment too large: 5 bytes exceeds the 4-byte limit/,
+  );
 });

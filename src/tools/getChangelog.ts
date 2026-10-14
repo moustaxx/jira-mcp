@@ -39,7 +39,8 @@ export const getChangelog: Tool = {
           field: i.field ?? null,
           fieldId: i.fieldId ?? null,
           from: i.fromString ?? i.from ?? null,
-          to: i.toString ?? i.to ?? null,
+          // `toString` is a Jira field here; don't fall back to the inherited Object.prototype method.
+          to: (Object.hasOwn(i, "toString") ? i.toString : null) ?? i.to ?? null,
         })),
     );
     // Jira returns histories oldest first; string sorting would break on mixed timezone offsets.
