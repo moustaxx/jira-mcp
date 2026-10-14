@@ -7,5 +7,7 @@ import { getTransitions } from "./getTransitions.ts";
 import { getAttachment } from "./getAttachment.ts";
 import { setDeployDescription } from "./setDeployDescription.ts";
 import { listFields } from "./listFields.ts";
+import { getChangelog } from "./getChangelog.ts";
+import { getDevInfo } from "./getDevInfo.ts";
 
-export const tools: Tool[] = [whoami, getIssue, search, getComments, getTransitions, getAttachment, setDeployDescription, listFields];
+export const tools: Tool[] = [whoami, getIssue, search, getComments, getTransitions, getAttachment, setDeployDescription, listFields, getChangelog, getDevInfo];

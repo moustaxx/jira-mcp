@@ -154,6 +154,24 @@ test("jira_search posts jql and maps issue list", async () => {
   assert.equal(parsed[1].assignee, null);
 });
 
+test("jira_search requests extra fields and returns them per issue", async () => {
+  const cap: any = {};
+  const client = clientReturning(
+    { issues: [{ key: "PROJ-1", fields: { summary: "A", customfield_11513: "MR !30" } }, { key: "PROJ-2", fields: { summary: "B" } }] },
+    cap,
+  );
+  const parsed = JSON.parse(await search.handler(client, { jql: "x", fields: ["customfield_11513"] }));
+  assert.match(decodeURIComponent(cap.url), /fields=summary,status,assignee,customfield_11513(&|$)/);
+  assert.deepEqual(parsed[0].extraFields, { customfield_11513: "MR !30" });
+  assert.deepEqual(parsed[1].extraFields, { customfield_11513: null });
+});
+
+test("jira_search omits extraFields when no fields are requested", async () => {
+  const client = clientReturning({ issues: [{ key: "PROJ-1", fields: { summary: "A" } }] });
+  const parsed = JSON.parse(await search.handler(client, { jql: "x" }));
+  assert.equal("extraFields" in parsed[0], false);
+});
+
 test("jira_search defaults limit to 25", async () => {
   const cap: any = {};
   const client = clientReturning({ issues: [] }, cap);
@@ -340,13 +358,140 @@ test("jira_list_fields with issue_key lists only fields set on the issue", async
   ]);
 });
 
+import { getChangelog } from "../src/tools/getChangelog.ts";
+
+const changelogBody = {
+  key: "PROJ-1",
+  changelog: {
+    histories: [
+      {
+        created: "2026-06-01T10:00:00.000+0000",
+        author: { displayName: "Anna K" },
+        items: [
+          { field: "status", fieldId: "status", fromString: "Open", toString: "In Progress" },
+          { field: "assignee", fieldId: "assignee", fromString: null, toString: "Anna K" },
+        ],
+      },
+      {
+        created: "2026-06-02T10:00:00.000+0000",
+        author: { displayName: "Marek B" },
+        items: [{ field: "Deploy Description", fieldId: "customfield_11513", fromString: null, toString: "MR !30" }],
+      },
+    ],
+  },
+};
+
+test("jira_get_changelog flattens history items", async () => {
+  const cap: any = {};
+  const client = clientReturning(changelogBody, cap);
+  const parsed = JSON.parse(await getChangelog.handler(client, { issue_key: "PROJ-1" }));
+  assert.match(decodeURIComponent(cap.url), /\/rest\/api\/2\/issue\/PROJ-1\?.*expand=changelog/);
+  assert.equal(parsed.length, 3);
+  assert.deepEqual(parsed[0], {
+    created: "2026-06-01T10:00:00.000+0000",
+    author: "Anna K",
+    field: "status",
+    fieldId: "status",
+    from: "Open",
+    to: "In Progress",
+  });
+  assert.equal(parsed[2].author, "Marek B");
+});
+
+test("jira_get_changelog filters by field name or id, case-insensitive", async () => {
+  const client = clientReturning(changelogBody);
+  const byName = JSON.parse(await getChangelog.handler(client, { issue_key: "PROJ-1", field: "Status" }));
+  assert.deepEqual(byName.map((r: any) => r.to), ["In Progress"]);
+  const byId = JSON.parse(await getChangelog.handler(client, { issue_key: "PROJ-1", field: "customfield_11513" }));
+  assert.deepEqual(byId.map((r: any) => r.to), ["MR !30"]);
+});
+
+import { getDevInfo } from "../src/tools/getDevInfo.ts";
+
+function routedClient(routes: Array<[RegExp, any]>, urls: string[] = []) {
+  return new JiraClient({
+    baseUrl: "https://jira.example.test",
+    pat: "t",
+    fetchImpl: async (url: string) => {
+      urls.push(url);
+      const hit = routes.find(([re]) => re.test(url));
+      if (!hit) return { ok: false, status: 404, json: async () => null, text: async () => "" } as any;
+      return { ok: true, status: 200, json: async () => hit[1], text: async () => JSON.stringify(hit[1]) } as any;
+    },
+  });
+}
+
+test("jira_get_dev_info collects pull requests, branches and remote links", async () => {
+  const urls: string[] = [];
+  const client = routedClient(
+    [
+      [/\/issue\/PROJ-1\?fields=summary$/, { id: "10042", key: "PROJ-1", fields: { summary: "A" } }],
+      [/\/issue\/PROJ-1\/remotelink$/, [{ relationship: "mentioned in", object: { title: "MR !30", url: "https://gitlab/mr/30" } }]],
+      [/\/dev-status\/1\.0\/issue\/summary\?issueId=10042$/, { summary: { pullrequest: { byInstanceType: { gitlab: { count: 1 } } } } }],
+      [
+        /dataType=pullrequest/,
+        {
+          detail: [
+            {
+              pullRequests: [
+                {
+                  id: "!30",
+                  name: "PROJ-1 fix",
+                  status: "MERGED",
+                  url: "https://gitlab/mr/30",
+                  source: { branch: "feature/PROJ-1" },
+                  destination: { branch: "master" },
+                  repositoryName: "checkout",
+                  author: { name: "Anna K" },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      [/dataType=branch/, { detail: [{ branches: [{ name: "feature/PROJ-1", url: "https://gitlab/b", repository: { name: "checkout" } }] }] }],
+    ],
+    urls,
+  );
+  const parsed = JSON.parse(await getDevInfo.handler(client, { issue_key: "PROJ-1" }));
+  assert.ok(urls.some((u) => /detail\?issueId=10042&applicationType=gitlab&dataType=pullrequest$/.test(u)));
+  assert.deepEqual(parsed.pullRequests, [
+    {
+      id: "!30",
+      title: "PROJ-1 fix",
+      status: "MERGED",
+      url: "https://gitlab/mr/30",
+      sourceBranch: "feature/PROJ-1",
+      targetBranch: "master",
+      repository: "checkout",
+      author: "Anna K",
+      lastUpdate: null,
+    },
+  ]);
+  assert.deepEqual(parsed.branches, [{ name: "feature/PROJ-1", url: "https://gitlab/b", repository: "checkout" }]);
+  assert.equal(parsed.remoteLinks[0].url, "https://gitlab/mr/30");
+  assert.equal("errors" in parsed, false);
+});
+
+test("jira_get_dev_info reports failing sources under errors instead of throwing", async () => {
+  const client = routedClient([[/\/issue\/PROJ-1\?fields=summary$/, { id: "1", key: "PROJ-1" }]]);
+  const parsed = JSON.parse(await getDevInfo.handler(client, { issue_key: "PROJ-1" }));
+  assert.deepEqual(parsed.pullRequests, []);
+  assert.deepEqual(parsed.remoteLinks, []);
+  assert.equal(parsed.errors.length, 2);
+  assert.match(parsed.errors[0], /^remotelink: Not found/);
+  assert.match(parsed.errors[1], /^dev-status: Not found/);
+});
+
 import { tools } from "../src/tools/index.ts";
 
-test("registry exposes all eight tools with unique names", async () => {
+test("registry exposes all ten tools with unique names", async () => {
   const names = tools.map((t) => t.name).sort();
   assert.deepEqual(names, [
     "jira_get_attachment",
+    "jira_get_changelog",
     "jira_get_comments",
+    "jira_get_dev_info",
     "jira_get_issue",
     "jira_get_transitions",
     "jira_list_fields",
