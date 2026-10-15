@@ -11,6 +11,17 @@ function extraFields(args: Record<string, any>): Record<string, any> {
   return args.fields;
 }
 
+function writableFields(): Set<string> | "all" {
+  const configured = process.env.JIRA_WRITE_FIELDS;
+  if (configured === "*") return "all";
+  return new Set(
+    (configured ?? "")
+      .split(",")
+      .map((field) => field.trim())
+      .filter(Boolean),
+  );
+}
+
 export const createIssue: Tool = {
   name: "jira_create_issue",
   description:
@@ -65,6 +76,16 @@ export const updateIssue: Tool = {
     const changed = Object.keys(fields);
     if (changed.length === 0)
       throw new Error("Nothing to update: pass summary, description or fields.");
+    const allowed = writableFields();
+    if (allowed !== "all") {
+      if (allowed.size === 0) {
+        throw new Error("No writable fields configured. Set JIRA_WRITE_FIELDS.");
+      }
+      const forbidden = changed.filter((field) => !allowed.has(field));
+      if (forbidden.length > 0) {
+        throw new Error(`Fields not allowed by JIRA_WRITE_FIELDS: ${forbidden.join(", ")}.`);
+      }
+    }
     await client.put(`/rest/api/2/issue/${encodeURIComponent(args.issue_key)}`, { fields });
     return JSON.stringify({ key: args.issue_key, updated: changed }, null, 2);
   },

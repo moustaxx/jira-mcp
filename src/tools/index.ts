@@ -5,7 +5,6 @@ import { search } from "./search.ts";
 import { getComments } from "./getComments.ts";
 import { getTransitions } from "./getTransitions.ts";
 import { getAttachment } from "./getAttachment.ts";
-import { setDeployDescription } from "./setDeployDescription.ts";
 import { listFields } from "./listFields.ts";
 import { getChangelog } from "./getChangelog.ts";
 import { getDevInfo } from "./getDevInfo.ts";
@@ -22,7 +21,6 @@ export const tools: Tool[] = [
   getComments,
   getTransitions,
   getAttachment,
-  setDeployDescription,
   listFields,
   getChangelog,
   getDevInfo,

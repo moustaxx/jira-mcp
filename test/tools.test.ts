@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { JiraClient } from "../src/jiraClient.ts";
 import { whoami } from "../src/tools/whoami.ts";
 
-function clientReturning(body: any, captured?: { url?: string }) {
+function clientReturning(body: any, captured?: { url?: string; }) {
   return new JiraClient({
     baseUrl: "https://jira.example.test",
     pat: "t",
@@ -527,9 +527,7 @@ test("jira_get_attachment enforces the size limit from metadata and content-leng
   );
 });
 
-import { setDeployDescription } from "../src/tools/setDeployDescription.ts";
-
-function writeClient(captured: { calls: any[] }, getBody: any = {}) {
+function writeClient(captured: { calls: any[]; }, getBody: any = {}) {
   return new JiraClient({
     baseUrl: "https://jira.example.test",
     pat: "t",
@@ -547,84 +545,6 @@ function writeClient(captured: { calls: any[] }, getBody: any = {}) {
     },
   });
 }
-
-test("jira_set_deploy_description replaces the field with a single PUT", async () => {
-  const cap = { calls: [] as any[] };
-  const client = writeClient(cap);
-  const out = await setDeployDescription.handler(client, {
-    issue_key: "PROJ-18710",
-    text: "MR !30 -> master",
-  });
-  assert.equal(cap.calls.length, 1);
-  assert.equal(cap.calls[0].method, "PUT");
-  assert.match(cap.calls[0].url, /\/rest\/api\/2\/issue\/PROJ-18710$/);
-  assert.deepEqual(JSON.parse(cap.calls[0].body), {
-    fields: { customfield_11513: "MR !30 -> master" },
-  });
-  const parsed = JSON.parse(out);
-  assert.equal(parsed.key, "PROJ-18710");
-  assert.equal(parsed.mode, "replace");
-  assert.equal(parsed.field, "customfield_11513");
-});
-
-test("jira_set_deploy_description appends after the existing value", async () => {
-  const cap = { calls: [] as any[] };
-  const client = writeClient(cap, { fields: { customfield_11513: "old line" } });
-  await setDeployDescription.handler(client, {
-    issue_key: "PROJ-1",
-    text: "new line",
-    mode: "append",
-  });
-  assert.equal(cap.calls.length, 2);
-  assert.equal(cap.calls[0].method, "GET");
-  assert.match(cap.calls[0].url, /\/rest\/api\/2\/issue\/PROJ-1\?fields=customfield_11513$/);
-  assert.deepEqual(JSON.parse(cap.calls[1].body), {
-    fields: { customfield_11513: "old line\n\nnew line" },
-  });
-});
-
-test("jira_set_deploy_description appending to an empty field adds no leading blank lines", async () => {
-  const cap = { calls: [] as any[] };
-  const client = writeClient(cap, { fields: { customfield_11513: null } });
-  await setDeployDescription.handler(client, {
-    issue_key: "PROJ-1",
-    text: "first line",
-    mode: "append",
-  });
-  assert.deepEqual(JSON.parse(cap.calls[1].body), { fields: { customfield_11513: "first line" } });
-});
-
-test("jira_set_deploy_description rejects an unknown mode without calling Jira", async () => {
-  const cap = { calls: [] as any[] };
-  const client = writeClient(cap);
-  await assert.rejects(
-    () => setDeployDescription.handler(client, { issue_key: "PROJ-1", text: "x", mode: "delete" }),
-    /mode/,
-  );
-  assert.equal(cap.calls.length, 0);
-});
-
-test("jira_set_deploy_description refuses to append to a non-text field", async () => {
-  const cap = { calls: [] as any[] };
-  const client = writeClient(cap, { fields: { customfield_11513: { value: "x" } } });
-  await assert.rejects(
-    () => setDeployDescription.handler(client, { issue_key: "PROJ-1", text: "y", mode: "append" }),
-    /not a text field/,
-  );
-  assert.equal(cap.calls.length, 1);
-});
-
-test("jira_set_deploy_description honours JIRA_DEPLOY_DESCRIPTION_FIELD override", async () => {
-  const cap = { calls: [] as any[] };
-  const client = writeClient(cap);
-  process.env.JIRA_DEPLOY_DESCRIPTION_FIELD = "customfield_11505";
-  try {
-    await setDeployDescription.handler(client, { issue_key: "PROJ-1", text: "x" });
-  } finally {
-    delete process.env.JIRA_DEPLOY_DESCRIPTION_FIELD;
-  }
-  assert.deepEqual(JSON.parse(cap.calls[0].body), { fields: { customfield_11505: "x" } });
-});
 
 import { listFields } from "../src/tools/listFields.ts";
 
@@ -799,7 +719,10 @@ test("jira_get_dev_info collects pull requests, branches and remote links", asyn
   const urls: string[] = [];
   const client = routedClient(
     [
-      [/\/issue\/PROJ-1\?fields=summary$/, { id: "10042", key: "PROJ-1", fields: { summary: "A" } }],
+      [
+        /\/issue\/PROJ-1\?fields=summary$/,
+        { id: "10042", key: "PROJ-1", fields: { summary: "A" } },
+      ],
       [
         /\/issue\/PROJ-1\/remotelink$/,
         [
@@ -1048,7 +971,7 @@ test("jira_get_worklogs treats missing time as zero and an absent list as empty"
 import { addComment } from "../src/tools/addComment.ts";
 import { createIssue, updateIssue } from "../src/tools/writeIssue.ts";
 
-function postClient(captured: { calls: any[] }, responseBody: any = {}) {
+function postClient(captured: { calls: any[]; }, responseBody: any = {}) {
   return new JiraClient({
     baseUrl: "https://jira.example.test",
     pat: "t",
@@ -1139,19 +1062,65 @@ test("jira_create_issue rejects non-object fields", async () => {
   assert.equal(cap.calls.length, 0);
 });
 
-test("jira_update_issue PUTs only the given fields", async () => {
+test("jira_update_issue rejects writes when no field whitelist is configured", async () => {
   const cap = { calls: [] as any[] };
-  const parsed = JSON.parse(
-    await updateIssue.handler(postClient(cap), {
-      issue_key: "PROJ-1",
-      summary: "New",
-      fields: { labels: ["x"] },
-    }),
+  await assert.rejects(
+    () => updateIssue.handler(postClient(cap), { issue_key: "PROJ-1", fields: { labels: ["x"] } }),
+    /JIRA_WRITE_FIELDS/,
   );
+  assert.equal(cap.calls.length, 0);
+});
+
+test("jira_update_issue PUTs only whitelisted fields", async () => {
+  const cap = { calls: [] as any[] };
+  process.env.JIRA_WRITE_FIELDS = "labels, summary";
+  let parsed;
+  try {
+    parsed = JSON.parse(
+      await updateIssue.handler(postClient(cap), {
+        issue_key: "PROJ-1",
+        summary: "New",
+        fields: { labels: ["x"] },
+      }),
+    );
+  } finally {
+    delete process.env.JIRA_WRITE_FIELDS;
+  }
   assert.equal(cap.calls[0].method, "PUT");
   assert.match(cap.calls[0].url, /\/rest\/api\/2\/issue\/PROJ-1$/);
   assert.deepEqual(JSON.parse(cap.calls[0].body), { fields: { labels: ["x"], summary: "New" } });
   assert.deepEqual(parsed.updated, ["labels", "summary"]);
+});
+
+test("jira_update_issue allows every field with JIRA_WRITE_FIELDS=*", async () => {
+  const cap = { calls: [] as any[] };
+  process.env.JIRA_WRITE_FIELDS = "*";
+  try {
+    await updateIssue.handler(postClient(cap), {
+      issue_key: "PROJ-1",
+      fields: { customfield_11513: "Deploy text", labels: ["x"] },
+    });
+  } finally {
+    delete process.env.JIRA_WRITE_FIELDS;
+  }
+  assert.deepEqual(JSON.parse(cap.calls[0].body), {
+    fields: { customfield_11513: "Deploy text", labels: ["x"] },
+  });
+});
+
+test("jira_update_issue rejects a field outside the whitelist", async () => {
+  const cap = { calls: [] as any[] };
+  process.env.JIRA_WRITE_FIELDS = "summary";
+  try {
+    await assert.rejects(
+      () =>
+        updateIssue.handler(postClient(cap), { issue_key: "PROJ-1", fields: { labels: ["x"] } }),
+      /not allowed by JIRA_WRITE_FIELDS/,
+    );
+  } finally {
+    delete process.env.JIRA_WRITE_FIELDS;
+  }
+  assert.equal(cap.calls.length, 0);
 });
 
 test("jira_update_issue with nothing to change does not call Jira", async () => {
@@ -1165,7 +1134,7 @@ test("jira_update_issue with nothing to change does not call Jira", async () => 
 
 import { transitionIssue } from "../src/tools/transitionIssue.ts";
 
-function transitionClient(captured: { calls: any[] }) {
+function transitionClient(captured: { calls: any[]; }) {
   return new JiraClient({
     baseUrl: "https://jira.example.test",
     pat: "t",
@@ -1175,12 +1144,12 @@ function transitionClient(captured: { calls: any[] }) {
       const body =
         method === "GET"
           ? {
-              transitions: [
-                { id: "21", name: "Start Progress", to: { name: "In Progress" } },
-                { id: "31", name: "Done", to: { name: "Closed" } },
-                { id: "41", name: "Reject", to: { name: "Closed" } },
-              ],
-            }
+            transitions: [
+              { id: "21", name: "Start Progress", to: { name: "In Progress" } },
+              { id: "31", name: "Done", to: { name: "Closed" } },
+              { id: "41", name: "Reject", to: { name: "Closed" } },
+            ],
+          }
           : null;
       return {
         ok: true,
@@ -1201,7 +1170,11 @@ test("jira_transition_issue resolves by id, transition name or target status", a
     assert.equal(cap.calls[1].method, "POST");
     assert.match(cap.calls[1].url, /\/rest\/api\/2\/issue\/PROJ-1\/transitions$/);
     assert.deepEqual(JSON.parse(cap.calls[1].body), { transition: { id: "21" } });
-    assert.deepEqual(parsed, { key: "PROJ-1", transition: "Start Progress", status: "In Progress" });
+    assert.deepEqual(parsed, {
+      key: "PROJ-1",
+      transition: "Start Progress",
+      status: "In Progress",
+    });
   }
 });
 
@@ -1282,6 +1255,7 @@ test("write tools are disabled by default", () => {
   assert.equal(names.includes("jira_add_comment"), false);
   assert.equal(names.includes("jira_create_issue"), false);
   assert.equal(names.includes("jira_transition_issue"), false);
+  assert.equal(names.includes("jira_set_deploy_description"), false);
 });
 
 test("JIRA_WRITE_TOOLS enables groups independently, tolerating spaces, case and duplicates", () => {
@@ -1307,7 +1281,7 @@ test("JIRA_WRITE_TOOLS rejects unknown groups", () => {
   assert.throws(() => enabledTools("constructor"), /Unknown/);
 });
 
-test("registry exposes all thirteen tools with unique names", async () => {
+test("registry exposes read-only tools with unique names", async () => {
   const names = tools.map((t) => t.name).sort();
   assert.deepEqual(names, [
     "jira_get_attachment",
@@ -1321,7 +1295,6 @@ test("registry exposes all thirteen tools with unique names", async () => {
     "jira_list_fields",
     "jira_list_sprints",
     "jira_search",
-    "jira_set_deploy_description",
     "jira_whoami",
   ]);
   assert.equal(new Set(names).size, names.length);
@@ -1331,7 +1304,6 @@ import { validateArgs } from "../src/tools/validate.ts";
 
 test("validateArgs checks required, types, enums, array items and unknown arguments", () => {
   validateArgs(search.inputSchema, { jql: "x", limit: 5, fields: ["a"] });
-  validateArgs(setDeployDescription.inputSchema, { issue_key: "A-1", text: "x", mode: "append" });
   assert.throws(() => validateArgs(search.inputSchema, {}), /Missing required argument `jql`/);
   assert.throws(() => validateArgs(search.inputSchema, { jql: 1 }), /`jql` must be a string/);
   assert.throws(() => validateArgs(search.inputSchema, { jql: "x", limit: "5" }), /number/);
@@ -1340,11 +1312,6 @@ test("validateArgs checks required, types, enums, array items and unknown argume
     /array of strings/,
   );
   assert.throws(() => validateArgs(search.inputSchema, { jql: "x", foo: 1 }), /Unknown argument/);
-  assert.throws(
-    () =>
-      validateArgs(setDeployDescription.inputSchema, { issue_key: "A-1", text: "x", mode: "d" }),
-    /one of: replace, append/,
-  );
 });
 
 test("validateArgs handles objects, nulls, undefined values and open schemas", () => {

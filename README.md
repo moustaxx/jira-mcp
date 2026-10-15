@@ -1,6 +1,6 @@
 # jira-mcp
 
-MCP server for self-hosted Jira (Server/Data Center). Read-only by default apart from one writable field: Deploy Description. Comments, issue create/edit and status transitions can be enabled explicitly (see [Optional write tools](#optional-write-tools)).
+MCP server for self-hosted Jira (Server/Data Center). Read-only by default. Comments, issue create/edit and status transitions can be enabled explicitly (see [Optional write tools](#optional-write-tools)).
 
 ## Build
 
@@ -29,7 +29,6 @@ The instance URL is read from `JIRA_BASE_URL` and is never baked into the code.
 - `jira_list_boards` / `jira_list_sprints` — Jira Software boards and their sprints (sprint issues: `jira_search` with `sprint = <id>`)
 - `jira_get_transitions` — available transitions (read-only listing)
 - `jira_get_attachment` — download an attachment to disk (see [Attachments](#attachments))
-- `jira_set_deploy_description` — **write**: set or append the Deploy Description field
 - `jira_add_comment` — **write, opt-in** (`comments`): add a comment
 - `jira_create_issue` / `jira_update_issue` — **write, opt-in** (`issues`): create an issue, edit fields of an issue
 - `jira_transition_issue` — **write, opt-in** (`transitions`): change status by running a workflow transition
@@ -43,6 +42,14 @@ group with a comma-separated `JIRA_WRITE_TOOLS`:
     -e JIRA_WRITE_TOOLS=issues            # jira_create_issue, jira_update_issue
     -e JIRA_WRITE_TOOLS=transitions       # jira_transition_issue
     -e JIRA_WRITE_TOOLS=comments,issues,transitions
+
+When the `issues` group is enabled, `jira_update_issue` requires `JIRA_WRITE_FIELDS`.
+Set it to a comma-separated whitelist of Jira field ids, or to `*` to allow every field:
+
+    -e JIRA_WRITE_TOOLS=issues \
+    -e JIRA_WRITE_FIELDS=summary,description,customfield_11513
+
+    -e JIRA_WRITE_FIELDS=*
 
 An unknown group name stops the server at startup, so a typo never silently leaves a tool off.
 `jira_update_issue` edits fields only (summary, description, any field by id); it never changes status.
@@ -61,20 +68,7 @@ land outside that directory. Downloads are limited to 50 MB, and the token is on
     -e JIRA_ATTACHMENT_DIR=/path/to/dir
     -e JIRA_ATTACHMENT_MAX_BYTES=104857600
 
-## Writing the Deploy Description
-
-`jira_set_deploy_description` is the only write tool that is always on. It can touch a single field
-and nothing else — no other fields, no comments, no transitions.
-
-    jira_set_deploy_description(issue_key: "PROJ-18710", text: "...", mode: "replace" | "append")
-
-`mode` defaults to `replace`; `append` reads the current value first and adds the text after a
-blank line. The field id defaults to `customfield_11513` (Deploy Description) and
-can be overridden per instance:
-
-    -e JIRA_DEPLOY_DESCRIPTION_FIELD=customfield_XXXXX
-
-To find the id on another instance, check which fields your token may edit:
+To find field ids and check which fields your token may edit:
 
     curl -H "Authorization: Bearer $JIRA_PAT" \
       "$JIRA_BASE_URL/rest/api/2/issue/<KEY>/editmeta"
