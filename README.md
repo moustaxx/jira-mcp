@@ -67,8 +67,3 @@ land outside that directory. Downloads are limited to 50 MB, and the token is on
 
     -e JIRA_ATTACHMENT_DIR=/path/to/dir
     -e JIRA_ATTACHMENT_MAX_BYTES=104857600
-
-To find field ids and check which fields your token may edit:
-
-    curl -H "Authorization: Bearer $JIRA_PAT" \
-      "$JIRA_BASE_URL/rest/api/2/issue/<KEY>/editmeta"
