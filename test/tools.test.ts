@@ -527,25 +527,6 @@ test("jira_get_attachment enforces the size limit from metadata and content-leng
   );
 });
 
-function writeClient(captured: { calls: any[]; }, getBody: any = {}) {
-  return new JiraClient({
-    baseUrl: "https://jira.example.test",
-    pat: "t",
-    fetchImpl: async (url: string, init: any) => {
-      captured.calls.push({ url, method: init?.method ?? "GET", body: init?.body });
-      if ((init?.method ?? "GET") === "GET") {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => getBody,
-          text: async () => JSON.stringify(getBody),
-        } as any;
-      }
-      return { ok: true, status: 204, json: async () => null, text: async () => "" } as any;
-    },
-  });
-}
-
 import { listFields } from "../src/tools/listFields.ts";
 
 test("jira_list_fields lists all fields filtered by name or id", async () => {

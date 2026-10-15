@@ -15,7 +15,7 @@ function issueRef(issue: any) {
 export const getIssue: Tool = {
   name: "jira_get_issue",
   description:
-    "Get a Jira issue by key (e.g. PROJ-17619): summary, status, assignee, reporter, type, priority, dates, description, attachments, plus linked issues, parent and subtasks. Extra fields (e.g. custom fields) can be requested via `fields` and are returned raw under `extraFields`.",
+    'Get a Jira issue by key (e.g. PROJ-17619). To include custom fields, pass their ids in the `fields` array, e.g. fields: ["customfield_11513"]. Requested fields are returned raw under `extraFields`. The response also includes summary, status, assignee, reporter, type, priority, dates, description, attachments, linked issues, parent and subtasks.',
   inputSchema: {
     type: "object",
     properties: {
@@ -50,25 +50,25 @@ export const getIssue: Tool = {
         description: f.description ?? null,
         attachments: Array.isArray(f.attachment)
           ? f.attachment.map((a: any) => ({
-              id: a.id,
-              filename: a.filename,
-              mimeType: a.mimeType ?? null,
-              size: a.size ?? null,
-            }))
+            id: a.id,
+            filename: a.filename,
+            mimeType: a.mimeType ?? null,
+            size: a.size ?? null,
+          }))
           : [],
         parent: f.parent ? issueRef(f.parent) : null,
         subtasks: Array.isArray(f.subtasks) ? f.subtasks.map(issueRef) : [],
         links: Array.isArray(f.issuelinks)
           ? f.issuelinks.map((l: any) => {
-              const outward = Boolean(l.outwardIssue);
-              const linked = outward ? l.outwardIssue : l.inwardIssue;
-              return {
-                linkType: l.type?.name ?? null,
-                direction: outward ? "outward" : "inward",
-                relation: (outward ? l.type?.outward : l.type?.inward) ?? null,
-                ...issueRef(linked ?? {}),
-              };
-            })
+            const outward = Boolean(l.outwardIssue);
+            const linked = outward ? l.outwardIssue : l.inwardIssue;
+            return {
+              linkType: l.type?.name ?? null,
+              direction: outward ? "outward" : "inward",
+              relation: (outward ? l.type?.outward : l.type?.inward) ?? null,
+              ...issueRef(linked ?? {}),
+            };
+          })
           : [],
         ...(extra.length > 0 && {
           extraFields: Object.fromEntries(extra.map((name) => [name, f[name] ?? null])),
