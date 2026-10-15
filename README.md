@@ -2,19 +2,92 @@
 
 MCP server for self-hosted Jira (Server/Data Center). Read-only by default. Comments, issue create/edit and status transitions can be enabled explicitly (see [Optional write tools](#optional-write-tools)).
 
-## Build
+## Development
 
-    yarn install
-    yarn run build
+pnpm install
+pnpm build
 
-## Configure in Claude Code
+The published npm package includes the compiled server, so users do not need
+to clone the repository or build it locally.
+
+## Configure MCP clients
+
+Add an MCP server entry to the client you use. The client downloads the
+published package through `npx`; provide your token through the client's
+environment settings.
+
+### Claude Code
 
     claude mcp add jira --scope user \
       -e JIRA_BASE_URL=https://<your-jira-host> \
       -e JIRA_PAT=<your-personal-access-token> \
-      -- node /path/to/jira-mcp/dist/index.js
+      -- npx -y @moustaxx/jira-mcp
 
 The instance URL is read from `JIRA_BASE_URL` and is never baked into the code.
+
+### GitHub Copilot in VS Code
+
+Create `.vscode/mcp.json` in the workspace (or use **MCP: Open User
+Configuration** for a user-wide setup):
+
+```json
+{
+  "servers": {
+    "jira": {
+      "command": "npx",
+      "args": ["-y", "@moustaxx/jira-mcp"],
+      "env": {
+        "JIRA_BASE_URL": "https://<your-jira-host>",
+        "JIRA_PAT": "<your-personal-access-token>"
+      }
+    }
+  }
+}
+```
+
+### Antigravity
+
+Add the server to Antigravity's MCP configuration file, usually
+`~/.gemini/antigravity/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "jira": {
+      "command": "npx",
+      "args": ["-y", "@moustaxx/jira-mcp"],
+      "env": {
+        "JIRA_BASE_URL": "https://<your-jira-host>",
+        "JIRA_PAT": "<your-personal-access-token>"
+      }
+    }
+  }
+}
+```
+
+### Cursor
+
+Create `.cursor/mcp.json` in the project (or add the server from Cursor's MCP
+settings):
+
+```json
+{
+  "mcpServers": {
+    "jira": {
+      "command": "npx",
+      "args": ["-y", "@moustaxx/jira-mcp"],
+      "env": {
+        "JIRA_BASE_URL": "https://<your-jira-host>",
+        "JIRA_PAT": "<your-personal-access-token>"
+      }
+    }
+  }
+}
+```
+
+Restart or reload the MCP connections after saving the configuration. Keep
+the token out of version control; use a user-level configuration or the
+client's secret/environment-variable support when available.
 
 ## Tools
 

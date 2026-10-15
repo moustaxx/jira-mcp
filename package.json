@@ -1,13 +1,16 @@
 {
-  "name": "jira-mcp",
+  "name": "@moustaxx/jira-mcp",
   "version": "0.1.0",
-  "private": true,
   "bin": {
     "jira-mcp": "dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "scripts": {
     "build": "tsc",
+    "prepack": "npm run build",
     "test": "node --test --experimental-strip-types \"test/**/*.test.ts\"",
     "test:watch": "node --test --watch --experimental-strip-types \"test/**/*.test.ts\"",
     "lint": "oxlint",
