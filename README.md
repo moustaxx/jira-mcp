@@ -4,8 +4,10 @@ MCP server for self-hosted Jira (Server/Data Center). Read-only by default. Comm
 
 ## Development
 
+```console
 pnpm install
 pnpm build
+```
 
 The published npm package includes the compiled server, so users do not need
 to clone the repository or build it locally.
@@ -18,10 +20,12 @@ environment settings.
 
 ### Claude Code
 
-    claude mcp add jira --scope user \
-      -e JIRA_BASE_URL=https://<your-jira-host> \
-      -e JIRA_PAT=<your-personal-access-token> \
-      -- npx -y @moustaxx/jira-mcp
+```console
+claude mcp add jira --scope user \
+  -e JIRA_BASE_URL=https://<your-jira-host> \
+  -e JIRA_PAT=<your-personal-access-token> \
+  -- npx -y @moustaxx/jira-mcp
+```
 
 The instance URL is read from `JIRA_BASE_URL` and is never baked into the code.
 
