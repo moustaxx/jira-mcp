@@ -18,10 +18,10 @@
     "prepack": "npm run build",
     "test": "node --test --experimental-strip-types \"test/**/*.test.ts\"",
     "test:watch": "node --test --watch --experimental-strip-types \"test/**/*.test.ts\"",
-    "lint": "oxlint",
-    "lint:fix": "oxlint --fix",
-    "format": "oxfmt",
-    "format:check": "oxfmt --check"
+    "lint": "oxlint src/**/*",
+    "lint:fix": "oxlint --fix src/**/*",
+    "format": "oxfmt src/**/*",
+    "format:check": "oxfmt --check src/**/*"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1"
