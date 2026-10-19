@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
 
     steps:
       - uses: actions/checkout@v7
@@ -23,11 +24,12 @@ jobs:
         with:
           node-version: 26
           registry-url: https://registry.npmjs.org
+          package-manager-cache: false
 
       - uses: pnpm/setup@v3
         with:
           version: 12
-          cache: true
+          cache: false
           require-lockfile: true
 
       - name: Verify release tag matches package version
@@ -44,7 +46,8 @@ jobs:
       - run: pnpm lint
       - run: pnpm format:check
 
+      - name: Ensure npm supports trusted publishing
+        run: npm install --global 'npm@^11.5.1'
+
       - name: Publish package
         run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.npm_token }}
