@@ -5,6 +5,10 @@
   "bin": {
     "jira-mcp": "dist/index.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/moustaxx/jira-mcp.git"
+  }
   "files": [
     "dist"
   ],
