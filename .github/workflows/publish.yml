@@ -13,32 +13,34 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.release.tag_name }}
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 26
           registry-url: https://registry.npmjs.org
-          package-manager-cache: false
+
+      - uses: pnpm/setup@v3
+        with:
+          version: 12
+          cache: true
+          require-lockfile: true
 
       - name: Verify release tag matches package version
         run: |
           PACKAGE_VERSION="$(node -p "require('./package.json').version")"
           test "v${PACKAGE_VERSION}" = "${GITHUB_REF_NAME}"
 
-      - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - run: pnpm test
+      - run: pnpm lint
+      - run: pnpm format:check
 
       - name: Publish package
-        run: npm publish
+        run: npm publish --access public
         env:
-          NODE_AUTH_TOKEN: ${{secrets.npm_token}}
+          NODE_AUTH_TOKEN: ${{ secrets.npm_token }}
