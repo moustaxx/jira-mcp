@@ -1,6 +1,6 @@
 # jira-mcp
 
-MCP server for self-hosted Jira (Server/Data Center). Read-only by default. Comments, issue create/edit and status transitions can be enabled explicitly (see [Optional write tools](#optional-write-tools)).
+MCP server for self-hosted Jira (Server/Data Center). Read-only by default. Comments, issue create/edit, status transitions and work logging can be enabled explicitly (see [Optional write tools](#optional-write-tools)).
 
 ## Development
 
@@ -109,6 +109,7 @@ client's secret/environment-variable support when available.
 - `jira_add_comment` — **write, opt-in** (`comments`): add a comment
 - `jira_create_issue` / `jira_update_issue` — **write, opt-in** (`issues`): create an issue, edit fields of an issue
 - `jira_transition_issue` — **write, opt-in** (`transitions`): change status by running a workflow transition
+- `jira_add_worklog` — **write, opt-in** (`worklogs`): log work time on an issue
 
 ## Optional write tools
 
@@ -118,7 +119,8 @@ group with a comma-separated `JIRA_WRITE_TOOLS`:
     -e JIRA_WRITE_TOOLS=comments          # jira_add_comment
     -e JIRA_WRITE_TOOLS=issues            # jira_create_issue, jira_update_issue
     -e JIRA_WRITE_TOOLS=transitions       # jira_transition_issue
-    -e JIRA_WRITE_TOOLS=comments,issues,transitions
+    -e JIRA_WRITE_TOOLS=worklogs          # jira_add_worklog
+    -e JIRA_WRITE_TOOLS=comments,issues,transitions,worklogs
 
 When the `issues` group is enabled, `jira_update_issue` requires `JIRA_WRITE_FIELDS`.
 Set it to a comma-separated whitelist of Jira field ids, or to `*` to allow every field:
@@ -134,6 +136,10 @@ Status changes go through `jira_transition_issue`, which takes a transition id, 
 target status name (resolved against `jira_get_transitions`; an unknown or ambiguous name is rejected
 before anything is sent), plus an optional `comment` and `fields` required by the transition screen
 (e.g. `{"resolution": {"name": "Fixed"}}`).
+
+`jira_add_worklog` takes `time_spent` in Jira duration format (`1h 30m`, `45m`, `1d`), an optional
+`started` ISO 8601 date-time (without an offset it is the local time of the machine running the server;
+defaults to now) and an optional `comment`. The remaining estimate is adjusted automatically by Jira.
 
 ## Attachments
 

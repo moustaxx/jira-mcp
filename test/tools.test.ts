@@ -1001,6 +1001,74 @@ test("jira_add_comment returns nulls when Jira echoes no comment data", async ()
   assert.deepEqual(parsed, { key: "PROJ-1", id: null, author: null, created: null });
 });
 
+import { addWorklog } from "../src/tools/addWorklog.ts";
+
+test("jira_add_worklog posts time, start in Jira format and comment to the worklog endpoint", async () => {
+  const cap = { calls: [] as any[] };
+  const client = postClient(cap, {
+    id: "777",
+    author: { displayName: "Marek B" },
+    started: "2026-10-21T07:00:00.000+0000",
+    timeSpent: "1h 30m",
+    timeSpentSeconds: 5400,
+  });
+  const parsed = JSON.parse(
+    await addWorklog.handler(client, {
+      issue_key: "PROJ-1",
+      time_spent: " 1h 30m ",
+      started: "2026-10-21T09:00:00+02:00",
+      comment: "code review",
+    }),
+  );
+  assert.equal(cap.calls[0].method, "POST");
+  assert.match(cap.calls[0].url, /\/rest\/api\/2\/issue\/PROJ-1\/worklog$/);
+  assert.deepEqual(JSON.parse(cap.calls[0].body), {
+    timeSpent: "1h 30m",
+    started: "2026-10-21T07:00:00.000+0000",
+    comment: "code review",
+  });
+  assert.deepEqual(parsed, {
+    key: "PROJ-1",
+    id: "777",
+    author: "Marek B",
+    started: "2026-10-21T07:00:00.000+0000",
+    timeSpent: "1h 30m",
+    timeSpentSeconds: 5400,
+  });
+});
+
+test("jira_add_worklog sends only the time when start and comment are omitted", async () => {
+  const cap = { calls: [] as any[] };
+  const parsed = JSON.parse(
+    await addWorklog.handler(postClient(cap), { issue_key: "PROJ-1", time_spent: "2h", comment: " " }),
+  );
+  assert.deepEqual(JSON.parse(cap.calls[0].body), { timeSpent: "2h" });
+  assert.deepEqual(parsed, {
+    key: "PROJ-1",
+    id: null,
+    author: null,
+    started: null,
+    timeSpent: null,
+    timeSpentSeconds: null,
+  });
+});
+
+test("jira_add_worklog rejects invalid input without calling Jira", async () => {
+  for (const [args, error] of [
+    [{ time_spent: "  " }, /`time_spent` must not be empty/],
+    [{ time_spent: "1h", started: "2026-10-21" }, /`started` must be an ISO 8601 date-time/],
+    [{ time_spent: "1h", started: "yesterday 9am" }, /`started` must be an ISO 8601 date-time/],
+    [{ time_spent: "1h", started: "2026-13-45T25:00" }, /`started` must be an ISO 8601 date-time/],
+  ] as const) {
+    const cap = { calls: [] as any[] };
+    await assert.rejects(
+      () => addWorklog.handler(postClient(cap), { issue_key: "PROJ-1", ...args }),
+      error,
+    );
+    assert.equal(cap.calls.length, 0);
+  }
+});
+
 test("jira_create_issue builds fields and lets explicit args win over fields", async () => {
   const cap = { calls: [] as any[] };
   const client = postClient(cap, { id: "10001", key: "PROJ-2" });
@@ -1236,6 +1304,7 @@ test("write tools are disabled by default", () => {
   assert.equal(names.includes("jira_add_comment"), false);
   assert.equal(names.includes("jira_create_issue"), false);
   assert.equal(names.includes("jira_transition_issue"), false);
+  assert.equal(names.includes("jira_add_worklog"), false);
   assert.equal(names.includes("jira_set_deploy_description"), false);
 });
 
@@ -1249,6 +1318,9 @@ test("JIRA_WRITE_TOOLS enables groups independently, tolerating spaces, case and
 
   const transitions = enabledTools("transitions").map((t) => t.name);
   assert.deepEqual(transitions.slice(tools.length), ["jira_transition_issue"]);
+
+  const worklogs = enabledTools("worklogs").map((t) => t.name);
+  assert.deepEqual(worklogs.slice(tools.length), ["jira_add_worklog"]);
   assert.ok(both.includes("jira_create_issue"));
   assert.ok(both.includes("jira_update_issue"));
   assert.equal(new Set(both).size, both.length);
